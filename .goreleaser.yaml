@@ -92,32 +92,33 @@ release:
 
     **Full Changelog**: https://github.com/{{ .Env.GITHUB_OWNER }}/sscheck/compare/{{ .PreviousTag }}...{{ .Tag }}
 
-brews:
-  - name: sscheck
-    repository:
-      owner: "{{ .Env.GITHUB_OWNER }}"
-      name: homebrew-tap
-      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    directory: Formula
-    homepage: "https://github.com/{{ .Env.GITHUB_OWNER }}/sscheck"
-    description: "Security Headers Check - Analyze HTTP security headers"
-    license: MIT
-    skip_upload: auto
-    test: |
-      system "#{bin}/sscheck", "--version"
-    install: |
-      bin.install "sscheck"
+# Homebrew tap - uncomment and configure HOMEBREW_TAP_TOKEN secret to enable
+# brews:
+#   - name: sscheck
+#     repository:
+#       owner: "{{ .Env.GITHUB_OWNER }}"
+#       name: homebrew-tap
+#       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+#     directory: Formula
+#     homepage: "https://github.com/{{ .Env.GITHUB_OWNER }}/sscheck"
+#     description: "Security Headers Check - Analyze HTTP security headers"
+#     license: MIT
+#     skip_upload: auto
+#     test: |
+#       system "#{bin}/sscheck", "--version"
+#     install: |
+#       bin.install "sscheck"
 
-# Optionally add nfpms for deb/rpm packages
-nfpms:
-  - id: packages
-    package_name: sscheck
-    vendor: Université de Lille
-    homepage: "https://github.com/{{ .Env.GITHUB_OWNER }}/sscheck"
-    maintainer: "Franck Paszkowski <franck.paszkowski@univ-lille.fr>"
-    description: "Security Headers Check - Analyze HTTP security headers"
-    license: MIT
-    formats:
-      - deb
-      - rpm
-    bindir: /usr/bin
+# Optionally add nfpms for deb/rpm packages - requires additional setup
+# nfpms:
+#   - id: packages
+#     package_name: sscheck
+#     vendor: Université de Lille
+#     homepage: "https://github.com/{{ .Env.GITHUB_OWNER }}/sscheck"
+#     maintainer: "Franck Paszkowski <franck.paszkowski@univ-lille.fr>"
+#     description: "Security Headers Check - Analyze HTTP security headers"
+#     license: MIT
+#     formats:
+#       - deb
+#       - rpm
+#     bindir: /usr/bin
