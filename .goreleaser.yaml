@@ -1,0 +1,123 @@
+# GoReleaser configuration for sscheck
+# Documentation: https://goreleaser.com
+
+version: 2
+
+project_name: sscheck
+
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+
+builds:
+  - id: sscheck
+    main: .
+    binary: sscheck
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X 'sscheck/internal/version.Version={{.Version}}'
+      - -X 'sscheck/internal/version.Commit={{.Commit}}'
+      - -X 'sscheck/internal/version.Date={{.Date}}'
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: default
+    format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}-
+      {{- .Version }}-
+      {{- .Os }}-
+      {{- .Arch }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+      - Merge pull request
+      - Merge branch
+  groups:
+    - title: "🚀 Features"
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: "🐛 Bug Fixes"
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: "📚 Documentation"
+      regexp: '^.*?docs(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: "🔧 Maintenance"
+      order: 999
+
+release:
+  github:
+    owner: "{{ .Env.GITHUB_OWNER }}"
+    name: sscheck
+  draft: false
+  prerelease: auto
+  mode: replace
+  header: |
+    ## sscheck {{ .Tag }}
+
+    Security Headers Check - Analyze HTTP security headers
+  footer: |
+    ---
+
+    **Full Changelog**: https://github.com/{{ .Env.GITHUB_OWNER }}/sscheck/compare/{{ .PreviousTag }}...{{ .Tag }}
+
+brews:
+  - name: sscheck
+    repository:
+      owner: "{{ .Env.GITHUB_OWNER }}"
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/{{ .Env.GITHUB_OWNER }}/sscheck"
+    description: "Security Headers Check - Analyze HTTP security headers"
+    license: MIT
+    skip_upload: auto
+    test: |
+      system "#{bin}/sscheck", "--version"
+    install: |
+      bin.install "sscheck"
+
+# Optionally add nfpms for deb/rpm packages
+nfpms:
+  - id: packages
+    package_name: sscheck
+    vendor: Université de Lille
+    homepage: "https://github.com/{{ .Env.GITHUB_OWNER }}/sscheck"
+    maintainer: "Franck Paszkowski <franck.paszkowski@univ-lille.fr>"
+    description: "Security Headers Check - Analyze HTTP security headers"
+    license: MIT
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/bin

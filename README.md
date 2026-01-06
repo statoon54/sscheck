@@ -15,7 +15,7 @@ A Go implementation of [shcheck](https://github.com/santoru/shcheck) - a tool to
 ## Security Headers Checked
 
 | Header | Severity |
-|--------|----------|
+| -------- | ---------- |
 | Strict-Transport-Security (HSTS) | Error |
 | Content-Security-Policy (CSP) | Warning |
 | X-Frame-Options | Warning |
@@ -32,7 +32,7 @@ A Go implementation of [shcheck](https://github.com/santoru/shcheck) - a tool to
 ## Installation
 
 ```bash
-go install github.com/sscheck@latest
+go install github.com/statoon54/sscheck@latest
 ```
 
 Or build from source:
@@ -162,4 +162,4 @@ MIT License - see [LICENSE](LICENSE) for details.
 ## Credits
 
 - Inspired by [shcheck](https://github.com/santoru/shcheck) by santoru
-- Built with [Bubbletea](https://github.com/charmbracelet/bubbletea) and [Lipgloss](https://github.com/charmbracelet/lipgloss)
+- Built with [Bubbletea](https://github.com/charmbracelet/bubbletea) and [Lipgloss](https://github.com/charmbracelet/lipgloss) [gookit](https://github.com/gookit/color)

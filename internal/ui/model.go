@@ -259,13 +259,9 @@ func (m *Model) renderResults() string {
 
 		b.WriteString(headerStyle.Render(fmt.Sprintf("%s%s", prefix, result.Target)))
 		b.WriteString("\n")
-		b.WriteString(fmt.Sprintf("   Effective URL: %s\n", infoStyle.Render(result.EffectiveURL)))
-		b.WriteString(
-			fmt.Sprintf(
-				"   Status: %s | ",
-				statusColor.Render(fmt.Sprintf("%d", result.StatusCode)),
-			),
-		)
+		fmt.Fprintf(&b, "   Effective URL: %s\n", infoStyle.Render(result.EffectiveURL))
+		fmt.Fprintf(&b, "   Status: %s | ",
+			statusColor.Render(fmt.Sprintf("%d", result.StatusCode)))
 		b.WriteString(successStyle.Render(fmt.Sprintf("✓ %d", result.SafeCount)))
 		b.WriteString(" | ")
 		b.WriteString(errorStyle.Render(fmt.Sprintf("✗ %d", result.UnsafeCount)))
@@ -315,7 +311,7 @@ func (m *Model) renderResults() string {
 			if len(result.InfoHeaders) > 0 {
 				b.WriteString("\n   " + warningStyle.Render("Information Disclosure:") + "\n")
 				for _, h := range result.InfoHeaders {
-					b.WriteString(fmt.Sprintf("   ⚠ %s: %s\n", h.Name, dimStyle.Render(h.Value)))
+					fmt.Fprintf(&b, "   ⚠ %s: %s\n", h.Name, dimStyle.Render(h.Value))
 				}
 			}
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
@@ -99,7 +100,7 @@ func (c *Checker) CheckAll(targets []string) []*Result {
 	results := make([]*Result, len(targets))
 	var wg sync.WaitGroup
 
-	// Create worker pool
+	// Set concurrency limit (acts as semaphore)
 	workers := c.opts.Workers
 	if workers <= 0 {
 		workers = 10
@@ -107,51 +108,49 @@ func (c *Checker) CheckAll(targets []string) []*Result {
 	if workers > len(targets) {
 		workers = len(targets)
 	}
+	// semaphore channel
+	sem := make(chan struct{}, workers)
 
-	jobs := make(chan int, len(targets))
-
-	// Start workers
-	for range workers {
+	// Process each target with controlled concurrency
+	for i, target := range targets {
 		wg.Go(func() {
-			for idx := range jobs {
-				results[idx] = c.Check(targets[idx])
-			}
+			sem <- struct{}{} // Acquire semaphore
+			defer func() { <-sem }()
+			results[i] = c.Check(target)
 		})
 	}
 
-	// Send jobs
-	for i := range targets {
-		jobs <- i
-	}
-	close(jobs)
-
-	wg.Wait()
+	wg.Wait() // Wait for all goroutines to finish
 	return results
 }
 
-// Check analyzes security headers for a single target
-func (c *Checker) Check(target string) *Result {
-	result := &Result{
-		Target:         target,
-		PresentHeaders: []HeaderInfo{},
-		MissingHeaders: []HeaderInfo{},
-		InfoHeaders:    []HeaderInfo{},
-		CacheHeaders:   []HeaderInfo{},
-	}
-
-	// Normalize target URL
-	target = normalizeURL(target)
-
-	// Append custom port if specified
-	if c.opts.Port != "" {
-		target = appendPort(target, c.opts.Port)
-	}
-
-	// Create request
-	req, err := http.NewRequestWithContext(context.Background(), c.opts.Method, target, http.NoBody)
+// doRequestWithFallback makes an HTTP request with automatic fallback to GET if HEAD fails
+func (c *Checker) doRequestWithFallback(target string) (*http.Response, error) {
+	resp, err := c.doRequest(target, c.opts.Method)
 	if err != nil {
-		result.Error = fmt.Sprintf("Failed to create request: %v", err)
-		return result
+		return nil, err
+	}
+
+	// If HEAD returns 404 or 405, retry with GET
+	if c.opts.Method == "HEAD" &&
+		(resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed) {
+		defer func() {
+			err := resp.Body.Close()
+			if err != nil {
+				fmt.Printf("Failed to close response body: %v\n", err)
+			}
+		}()
+		return c.doRequest(target, "GET")
+	}
+
+	return resp, nil
+}
+
+// doRequest creates and executes an HTTP request with the specified method
+func (c *Checker) doRequest(target, method string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(context.Background(), method, target, http.NoBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	// Set default headers
@@ -172,8 +171,33 @@ func (c *Checker) Check(target string) *Result {
 		req.Header.Set(k, v)
 	}
 
-	// Make request
 	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+	return resp, nil
+}
+
+// Check analyzes security headers for a single target
+func (c *Checker) Check(target string) *Result {
+	result := &Result{
+		Target:         target,
+		PresentHeaders: []HeaderInfo{},
+		MissingHeaders: []HeaderInfo{},
+		InfoHeaders:    []HeaderInfo{},
+		CacheHeaders:   []HeaderInfo{},
+	}
+
+	// Normalize target URL
+	target = normalizeURL(target)
+
+	// Append custom port if specified
+	if c.opts.Port != "" {
+		target = appendPort(target, c.opts.Port)
+	}
+
+	// Make request with fallback to GET if HEAD fails
+	resp, err := c.doRequestWithFallback(target)
 	if err != nil {
 		result.Error = fmt.Sprintf("Request failed: %v", err)
 		return result
@@ -194,9 +218,7 @@ func (c *Checker) Check(target string) *Result {
 
 	// Create a copy of security headers to work with
 	secHeaders := make(map[string]string)
-	for k, v := range SecurityHeaders {
-		secHeaders[k] = v
-	}
+	maps.Copy(secHeaders, SecurityHeaders)
 
 	// Check for CSP with frame-ancestors (makes X-Frame-Options unnecessary)
 	cspValue := getHeaderValue(resp.Header, "Content-Security-Policy")

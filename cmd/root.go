@@ -9,6 +9,7 @@ import (
 
 	"sscheck/internal/checker"
 	"sscheck/internal/ui"
+	"sscheck/internal/version"
 
 	"github.com/gookit/color"
 	"github.com/spf13/cobra"
@@ -34,8 +35,9 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "sscheck [targets...]",
-	Short: "Security Headers Check - Analyze HTTP security headers",
+	Use:     "sscheck [targets...]",
+	Short:   "Security Headers Check - Analyze HTTP security headers",
+	Version: version.Short(),
 	Long: `sscheck - Security Headers Check
 
 A tool to analyze security headers on web servers.
