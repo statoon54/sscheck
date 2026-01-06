@@ -1,0 +1,98 @@
+version: "2"
+
+linters:
+  enable:
+    - bodyclose
+    - copyloopvar
+    - dogsled
+    - errcheck
+    - errorlint
+    - gocheckcompilerdirectives
+    - goconst
+    - gocritic
+    - godox
+    - goprintffuncname
+    - gosec
+    - govet
+    - intrange
+    - ineffassign
+    - nakedret
+    - noctx
+    - nolintlint
+    - revive
+    - staticcheck
+    - testifylint
+    - unconvert
+    - unused
+    - whitespace
+    - wrapcheck
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+      exclude-functions:
+        - (*database/sql.Rows).Close
+    nolintlint:
+      allow-unused: false # report any unused nolint directives
+      require-explanation: true # require an explanation for nolint directives
+      require-specific: true # require nolint directives to be specific about which linter is being skipped
+    revive:
+      rules:
+        - name: unused-parameter
+          disabled: true
+    dupl:
+      threshold: 100
+    funlen:
+      lines: 300
+      statements: 300
+    goconst:
+      min-len: 2
+      min-occurrences: 3
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - experimental
+        - opinionated
+        - performance
+        - style
+      disabled-checks:
+        - dupImport # https://github.com/go-critic/go-critic/issues/845
+        - ifElseChain
+        - octalLiteral
+        - whyNoLint
+    gocyclo:
+      min-complexity: 15
+    godox:
+      keywords:
+        - FIXME
+        - TODO
+        - HACK
+  exclusions:
+    presets:
+      - comments
+      #- std-error-handling
+      - common-false-positives
+      - legacy
+    rules:
+      - path: (.+)_test\.go
+        linters:
+          - dupl
+          - mnd
+          - lll
+      - path: (.+)\.go$
+        text: "G115: integer overflow conversion"
+      - path: (.+)\.go$
+        text: "G404: Use of weak random number generator"
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    gofmt:
+      rewrite-rules:
+        - pattern: "interface{}"
+          replacement: "any"
+    goimports:
+      local-prefixes:
+        - github.com/golangci/golangci-lint/v2
