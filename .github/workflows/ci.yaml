@@ -32,7 +32,7 @@ jobs:
           curl -Os https://cli.codecov.io/latest/alpine/codecov.SHA256SUM
           curl -Os https://cli.codecov.io/latest/alpine/codecov.SHA256SUM.sig
           gpg --verify codecov.SHA256SUM.sig codecov.SHA256SUM
-          shasum -a 256 -c codecov.SHA256SUM
+          sha256sum -c codecov.SHA256SUM
           chmod +x codecov
           ./codecov upload-process -f coverage.out
         continue-on-error: true
