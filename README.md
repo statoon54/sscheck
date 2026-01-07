@@ -14,6 +14,7 @@ A Go implementation of [shcheck](https://github.com/santoru/shcheck) - a tool to
 - 🍪 Cookie security analysis (Secure, HttpOnly, SameSite flags)
 - 🌍 CORS configuration analysis
 - 🛡️ In-depth security policy analysis (inspired by [Mozilla Observatory](https://developer.mozilla.org/en-US/observatory/docs/tests_and_scoring))
+- 📊 **Mozilla Observatory Scoring System** with grades (A+ to F)
 
 ## Security Headers Checked
 
@@ -149,6 +150,67 @@ Controls:
 
 sscheck performs in-depth security analysis inspired by [Mozilla Observatory](https://developer.mozilla.org/en-US/observatory/docs/tests_and_scoring):
 
+### Mozilla Observatory Scoring System
+
+Each target receives a **score (0-145+)** and a **grade (A+ to F)** based on security header implementation:
+
+#### Baseline Score
+
+- Starting score: **100 points**
+
+#### Penalties (reduced score)
+
+- Missing CSP: **-25**
+- CSP with `unsafe-inline` in script-src: **-20**
+- CSP with `unsafe-eval`: **-10**
+- Missing HSTS (on HTTPS): **-20**
+- HSTS max-age < 6 months: **-10**
+- Missing X-Content-Type-Options: **-5**
+- Missing X-Frame-Options: **-20**
+- Invalid headers: **-5 to -20**
+- Session cookie without Secure flag: **-40**
+- Session cookie without HttpOnly: **-30**
+- Non-session cookies without Secure: **-5 to -20**
+- CORS wildcard with credentials (CRITICAL): **-50**
+
+#### Bonuses (increased score)
+
+- All cookies secure + HttpOnly + SameSite: **+5**
+- Private referrer policy (no-referrer, strict-origin, etc.): **+5**
+- HSTS with `preload` + `includeSubDomains`: **+5**
+- X-Frame-Options present or CSP frame-ancestors: **+5**
+- Cross-Origin-Resource-Policy same-origin/same-site: **+10**
+
+#### Grade Scale
+
+| Grade | Score Range |
+|-------|-------------|
+| **A+** | 100+ |
+| **A**  | 90-99 |
+| **A-** | 85-89 |
+| **B+** | 80-84 |
+| **B**  | 70-79 |
+| **B-** | 65-69 |
+| **C+** | 60-64 |
+| **C**  | 50-59 |
+| **C-** | 45-49 |
+| **D+** | 40-44 |
+| **D**  | 30-39 |
+| **D-** | 25-29 |
+| **F**  | 0-24 |
+
+#### Example Output
+
+```bash
+$ sscheck github.com
+[*] Analyzing headers of github.com
+[*] Effective URL: https://github.com
+
+[+] 5 security header(s) present
+[-] 4 security header(s) missing
+📊 Observatory Score: 115 | Grade: A+
+```
+
 ### Content-Security-Policy (CSP)
 
 - Detects `unsafe-inline` and `unsafe-eval` usage
@@ -161,6 +223,7 @@ sscheck performs in-depth security analysis inspired by [Mozilla Observatory](ht
 - Validates `max-age` (minimum 6 months / 15768000 seconds)
 - Detects `max-age=0` which disables HSTS
 - Warns if `preload` is set without `includeSubDomains`
+- **Bonus**: +5 points for `preload` + `includeSubDomains` (HSTS preload list eligible)
 
 ### Cookie Security (`--cookies`)
 
@@ -196,6 +259,8 @@ sscheck performs in-depth security analysis inspired by [Mozilla Observatory](ht
     "target": "https://example.com",
     "effective_url": "https://www.example.com/",
     "status_code": 200,
+    "score": 115,
+    "grade": "A+",
     "present_headers": [
       {"name": "Strict-Transport-Security", "value": "max-age=31536000", "status": "ok"}
     ],

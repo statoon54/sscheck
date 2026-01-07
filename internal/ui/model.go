@@ -38,6 +38,9 @@ var (
 
 	dimStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("240"))
+
+	scoreStyle = lipgloss.NewStyle().
+			Bold(true)
 )
 
 // Messages
@@ -216,12 +219,19 @@ func (m *Model) renderResultsSummary() string {
 
 	totalSafe := 0
 	totalUnsafe := 0
+	totalScore := 0
 	for _, r := range m.results {
 		totalSafe += r.SafeCount
 		totalUnsafe += r.UnsafeCount
+		totalScore += r.Score
 	}
 
-	fmt.Fprintf(&b, "Checked %d target(s)\n", len(m.results))
+	avgScore := 0
+	if len(m.results) > 0 {
+		avgScore = totalScore / len(m.results)
+	}
+
+	fmt.Fprintf(&b, "Checked %d target(s) | Avg Score: %d\n", len(m.results), avgScore)
 	b.WriteString(successStyle.Render(fmt.Sprintf("✓ %d security headers present", totalSafe)))
 	b.WriteString(" | ")
 	b.WriteString(errorStyle.Render(fmt.Sprintf("✗ %d security headers missing", totalUnsafe)))
@@ -266,6 +276,15 @@ func (m *Model) renderResults() string {
 		b.WriteString(" | ")
 		b.WriteString(errorStyle.Render(fmt.Sprintf("✗ %d", result.UnsafeCount)))
 		b.WriteString("\n")
+		// Score on its own line with icon and bold style
+		scoreStyleColored := scoreStyle.Foreground(getScoreColor(result.Score))
+		fmt.Fprintf(
+			&b,
+			"   📊 %s\n",
+			scoreStyleColored.Render(
+				fmt.Sprintf("Observatory Score: %d | Grade: %s", result.Score, result.Grade),
+			),
+		)
 
 		if selected || m.showAll {
 			// Present headers
@@ -393,6 +412,22 @@ func truncate(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen-3] + "..."
+}
+
+// getScoreColor returns the appropriate color for the score
+func getScoreColor(score int) lipgloss.Color {
+	switch {
+	case score >= 100:
+		return lipgloss.Color("42") // Green
+	case score >= 85:
+		return lipgloss.Color("46") // Light green
+	case score >= 70:
+		return lipgloss.Color("226") // Yellow
+	case score >= 50:
+		return lipgloss.Color("208") // Orange
+	default:
+		return lipgloss.Color("196") // Red
+	}
 }
 
 // RunInteractive starts the interactive TUI

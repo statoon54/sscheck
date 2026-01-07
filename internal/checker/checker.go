@@ -58,6 +58,8 @@ type Result struct {
 	StatusCode     int              `json:"status_code"`
 	SafeCount      int              `json:"safe_count"`
 	UnsafeCount    int              `json:"unsafe_count"`
+	Score          int              `json:"score"`
+	Grade          string           `json:"grade"`
 }
 
 // Checker is the main security header checker
@@ -345,6 +347,9 @@ func (c *Checker) Check(target string) *Result {
 		}
 	}
 
+	// Initialize Observatory score
+	result.Score = 100 // Baseline
+
 	// Analyze cookies
 	if c.opts.ShowCookies {
 		hasHSTS := getHeaderValue(resp.Header, "Strict-Transport-Security") != ""
@@ -355,6 +360,10 @@ func (c *Checker) Check(target string) *Result {
 	if c.opts.ShowCORS {
 		result.CORS = analyzeCORS(resp.Header)
 	}
+
+	// Apply final scoring adjustments based on collected data
+	applyObservatoryScoring(result, isHTTPS)
+	result.Grade = scoreToGrade(result.Score)
 
 	return result
 }
@@ -621,13 +630,7 @@ func analyzeCORP(value string) []string {
 	valueLower := strings.ToLower(strings.TrimSpace(value))
 
 	validValues := []string{"same-origin", "same-site", "cross-origin"}
-	found := false
-	for _, valid := range validValues {
-		if valueLower == valid {
-			found = true
-			break
-		}
-	}
+	found := slices.Contains(validValues, valueLower)
 
 	if !found {
 		issues = append(issues, fmt.Sprintf("unrecognized value '%s'", value))

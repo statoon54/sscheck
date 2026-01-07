@@ -341,6 +341,9 @@ func printResult(result *checker.Result, opts *checker.Options) {
 	fmt.Printf("[!] Analyzing headers for %s\n", color.Blue.Sprint(result.EffectiveURL))
 	fmt.Printf("[+] %s security header(s) present\n", color.Green.Sprintf("%d", result.SafeCount))
 	fmt.Printf("[-] %s security header(s) missing\n", color.Red.Sprintf("%d", result.UnsafeCount))
+	fmt.Printf("📊 Observatory Score: %s | Grade: %s\n",
+		getScoreColor(result.Score).Sprintf("%d", result.Score),
+		getGradeColor(result.Grade).Sprint(result.Grade))
 	fmt.Println()
 }
 
@@ -371,5 +374,33 @@ func printCSP(csp string) {
 		} else {
 			fmt.Printf("\t%s\n", color.Blue.Sprint(name))
 		}
+	}
+}
+
+// getScoreColor returns color based on score
+func getScoreColor(score int) color.Color {
+	switch {
+	case score >= 90:
+		return color.Green
+	case score >= 70:
+		return color.Yellow
+	case score >= 50:
+		return color.Yellow
+	default:
+		return color.Red
+	}
+}
+
+// getGradeColor returns color based on grade
+func getGradeColor(grade string) color.Color {
+	switch grade[0] {
+	case 'A':
+		return color.Green
+	case 'B':
+		return color.Yellow
+	case 'C', 'D':
+		return color.Yellow
+	default:
+		return color.Red
 	}
 }
