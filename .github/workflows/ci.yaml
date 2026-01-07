@@ -36,14 +36,13 @@ jobs:
       image: golang:1.25-alpine
     steps:
       - name: Install dependencies
-        run: apk add --no-cache git curl
+        run: apk add --no-cache git
 
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install golangci-lint
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b /usr/local/bin v2.7.2
+      - name: Install golangci-lint from source
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 
       - name: Run golangci-lint
         run: golangci-lint run ./...
