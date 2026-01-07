@@ -286,6 +286,15 @@ func (m *Model) renderResults() string {
 						style.Render(status),
 						h.Name,
 						dimStyle.Render(truncate(h.Value, 60)))
+
+					// Show CSP issues if any
+					if len(h.Issues) > 0 {
+						for _, issue := range h.Issues {
+							fmt.Fprintf(&b, "      %s %s\n",
+								warningStyle.Render("↳"),
+								dimStyle.Render(issue))
+						}
+					}
 				}
 			}
 
@@ -320,6 +329,54 @@ func (m *Model) renderResults() string {
 				b.WriteString("\n   " + infoStyle.Render("Cache Headers:") + "\n")
 				for _, h := range result.CacheHeaders {
 					fmt.Fprintf(&b, "   ℹ %s: %s\n", h.Name, dimStyle.Render(h.Value))
+				}
+			}
+
+			// Cookie analysis
+			if len(result.Cookies) > 0 {
+				b.WriteString("\n   " + infoStyle.Render("Cookies:") + "\n")
+				for _, c := range result.Cookies {
+					flags := []string{}
+					if c.Secure {
+						flags = append(flags, successStyle.Render("Secure"))
+					}
+					if c.HttpOnly {
+						flags = append(flags, successStyle.Render("HttpOnly"))
+					}
+					if c.SameSite != "" {
+						flags = append(flags, infoStyle.Render("SameSite="+c.SameSite))
+					}
+					flagStr := ""
+					if len(flags) > 0 {
+						flagStr = " [" + strings.Join(flags, ", ") + "]"
+					}
+					fmt.Fprintf(&b, "   🍪 %s%s\n", c.Name, flagStr)
+					for _, issue := range c.Issues {
+						fmt.Fprintf(&b, "      %s %s\n",
+							warningStyle.Render("↳"),
+							dimStyle.Render(issue))
+					}
+				}
+			}
+
+			// CORS analysis
+			if result.CORS != nil {
+				b.WriteString("\n   " + infoStyle.Render("CORS Configuration:") + "\n")
+				fmt.Fprintf(&b, "   🌐 Allow-Origin: %s\n", result.CORS.AllowOrigin)
+				if result.CORS.AllowCredentials {
+					fmt.Fprintf(&b, "   🌐 Allow-Credentials: %s\n", warningStyle.Render("true"))
+				}
+				if result.CORS.AllowMethods != "" {
+					fmt.Fprintf(
+						&b,
+						"   🌐 Allow-Methods: %s\n",
+						dimStyle.Render(result.CORS.AllowMethods),
+					)
+				}
+				for _, issue := range result.CORS.Issues {
+					fmt.Fprintf(&b, "      %s %s\n",
+						errorStyle.Render("↳"),
+						dimStyle.Render(issue))
 				}
 			}
 		}

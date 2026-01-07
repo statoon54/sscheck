@@ -26,6 +26,8 @@ var (
 	showInfo        bool
 	showCache       bool
 	showDeprecated  bool
+	showCookies     bool
+	showCORS        bool
 	proxyURL        string
 	hostsFile       string
 	timeout         int
@@ -88,6 +90,8 @@ func checkMySecurityHeaders(cmd *cobra.Command, args []string) {
 		ShowInfo:        showInfo,
 		ShowCache:       showCache,
 		ShowDeprecated:  showDeprecated,
+		ShowCookies:     showCookies,
+		ShowCORS:        showCORS,
 		ProxyURL:        proxyURL,
 		Timeout:         timeout,
 		FollowRedirects: followRedirects,
@@ -126,6 +130,10 @@ func init() {
 	rootCmd.Flags().BoolVarP(&showCache, "cache", "x", false, "Display caching headers")
 	rootCmd.Flags().
 		BoolVarP(&showDeprecated, "deprecated", "k", false, "Display deprecated headers")
+	rootCmd.Flags().
+		BoolVar(&showCookies, "cookies", false, "Analyze cookies for security issues (use -m GET)")
+	rootCmd.Flags().
+		BoolVar(&showCORS, "cors", false, "Analyze CORS configuration (typically on APIs)")
 	rootCmd.Flags().StringVar(&proxyURL, "proxy", "", "Set a proxy (e.g., http://127.0.0.1:8080)")
 	rootCmd.Flags().StringVar(&hostsFile, "hfile", "", "Load a list of hosts from a file")
 	rootCmd.Flags().IntVarP(&timeout, "timeout", "t", 10, "Request timeout in seconds")
@@ -213,6 +221,14 @@ func printResult(result *checker.Result, opts *checker.Options) {
 		if h.Name == "Content-Security-Policy" {
 			fmt.Printf("[*] Header %s is present!\n", color.Green.Sprint(h.Name))
 			printCSP(h.Value)
+			// Show CSP issues if any
+			if len(h.Issues) > 0 {
+				fmt.Println()
+				color.Yellow.Println("[!] CSP Security Issues:")
+				for _, issue := range h.Issues {
+					color.Yellow.Printf("    ↳ %s\n", issue)
+				}
+			}
 		} else {
 			var headerColor color.Color
 			switch h.Status {
@@ -224,6 +240,12 @@ func printResult(result *checker.Result, opts *checker.Options) {
 				headerColor = color.Green
 			}
 			fmt.Printf("[*] Header %s is present! (Value: %s)\n", headerColor.Sprint(h.Name), h.Value)
+			// Show issues for other headers
+			if len(h.Issues) > 0 {
+				for _, issue := range h.Issues {
+					color.Yellow.Printf("    ↳ %s\n", issue)
+				}
+			}
 		}
 	}
 
@@ -265,6 +287,51 @@ func printResult(result *checker.Result, opts *checker.Options) {
 				color.Blue.Sprint(h.Name),
 				h.Value,
 			)
+		}
+	}
+
+	// Cookie analysis
+	if opts.ShowCookies && len(result.Cookies) > 0 {
+		fmt.Println()
+		fmt.Println("[*] Cookie Security Analysis:")
+		for _, c := range result.Cookies {
+			flags := []string{}
+			if c.Secure {
+				flags = append(flags, color.Green.Sprint("Secure"))
+			}
+			if c.HttpOnly {
+				flags = append(flags, color.Green.Sprint("HttpOnly"))
+			}
+			if c.SameSite != "" {
+				flags = append(flags, color.Blue.Sprintf("SameSite=%s", c.SameSite))
+			}
+			flagStr := ""
+			if len(flags) > 0 {
+				flagStr = " [" + strings.Join(flags, ", ") + "]"
+			}
+			fmt.Printf("    Cookie: %s%s\n", color.Cyan.Sprint(c.Name), flagStr)
+			for _, issue := range c.Issues {
+				color.Yellow.Printf("      ↳ %s\n", issue)
+			}
+		}
+	}
+
+	// CORS analysis
+	if opts.ShowCORS && result.CORS != nil {
+		fmt.Println()
+		fmt.Println("[*] CORS Configuration:")
+		fmt.Printf(
+			"    Access-Control-Allow-Origin: %s\n",
+			color.Cyan.Sprint(result.CORS.AllowOrigin),
+		)
+		if result.CORS.AllowCredentials {
+			fmt.Printf("    Access-Control-Allow-Credentials: %s\n", color.Yellow.Sprint("true"))
+		}
+		if result.CORS.AllowMethods != "" {
+			fmt.Printf("    Access-Control-Allow-Methods: %s\n", result.CORS.AllowMethods)
+		}
+		for _, issue := range result.CORS.Issues {
+			color.Red.Printf("    ↳ %s\n", issue)
 		}
 	}
 

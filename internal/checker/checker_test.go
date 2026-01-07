@@ -50,10 +50,10 @@ func TestNew(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			c := New(tt.opts)
 			if c == nil {
-				t.Error("New() returned nil")
+				t.Fatal("New() returned nil")
 			}
 			if c.client == nil {
-				t.Error("New() client is nil")
+				t.Fatal("New() client is nil")
 			}
 			if c.opts != tt.opts {
 				t.Error("New() opts mismatch")
@@ -517,4 +517,580 @@ func TestCheckWithCookie(t *testing.T) {
 	if receivedCookie != "session=abc123; token=xyz" {
 		t.Errorf("Cookie = %s, want session=abc123; token=xyz", receivedCookie)
 	}
+}
+
+// TestAnalyzeCSP tests CSP analysis for security issues
+func TestAnalyzeCSP(t *testing.T) {
+	tests := []struct {
+		name           string
+		csp            string
+		expectedIssues []string
+		minIssues      int
+	}{
+		{
+			name:      "secure CSP with all directives",
+			csp:       "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'",
+			minIssues: 0,
+		},
+		{
+			name:           "CSP with unsafe-inline in script-src",
+			csp:            "default-src 'self'; script-src 'self' 'unsafe-inline'",
+			expectedIssues: []string{"script-src contains 'unsafe-inline'"},
+			minIssues:      1,
+		},
+		{
+			name:           "CSP with unsafe-eval in script-src",
+			csp:            "default-src 'self'; script-src 'self' 'unsafe-eval'",
+			expectedIssues: []string{"script-src contains 'unsafe-eval'"},
+			minIssues:      1,
+		},
+		{
+			name:           "CSP with data: in script-src",
+			csp:            "script-src 'self' data:",
+			expectedIssues: []string{"script-src contains data: URI scheme"},
+			minIssues:      1,
+		},
+		{
+			name:           "CSP with overly broad https: in script-src",
+			csp:            "script-src https:",
+			expectedIssues: []string{"script-src contains overly broad source 'https:'"},
+			minIssues:      1,
+		},
+		{
+			name:           "CSP with wildcard in script-src",
+			csp:            "script-src *",
+			expectedIssues: []string{"script-src contains overly broad source '*'"},
+			minIssues:      1,
+		},
+		{
+			name:           "CSP missing script-src and default-src",
+			csp:            "frame-ancestors 'self'",
+			expectedIssues: []string{"missing script-src directive"},
+			minIssues:      1,
+		},
+		{
+			name:      "CSP with only default-src (fallback)",
+			csp:       "default-src 'self'; base-uri 'self'; form-action 'self'",
+			minIssues: 0,
+		},
+		{
+			name:           "CSP missing base-uri",
+			csp:            "default-src 'self'; script-src 'self'",
+			expectedIssues: []string{"missing base-uri directive"},
+			minIssues:      1,
+		},
+		{
+			name:           "CSP missing form-action",
+			csp:            "default-src 'self'; base-uri 'self'",
+			expectedIssues: []string{"missing form-action directive"},
+			minIssues:      1,
+		},
+		{
+			name:           "CSP with multiple issues",
+			csp:            "script-src 'self' 'unsafe-inline' 'unsafe-eval' data:",
+			expectedIssues: []string{"unsafe-inline", "unsafe-eval", "data:"},
+			minIssues:      3,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			issues := analyzeCSP(tt.csp)
+
+			if tt.minIssues > 0 && len(issues) < tt.minIssues {
+				t.Errorf("analyzeCSP() returned %d issues, want at least %d. Issues: %v",
+					len(issues), tt.minIssues, issues)
+			}
+
+			if tt.minIssues == 0 && len(issues) > 0 {
+				t.Errorf("analyzeCSP() returned issues for secure CSP: %v", issues)
+			}
+
+			// Check for specific expected issues
+			for _, expected := range tt.expectedIssues {
+				found := false
+				for _, issue := range issues {
+					if contains(issue, expected) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("Expected issue containing '%s' not found in: %v", expected, issues)
+				}
+			}
+		})
+	}
+}
+
+// TestParseCSPDirectives tests CSP directive parsing
+func TestParseCSPDirectives(t *testing.T) {
+	tests := []struct {
+		name     string
+		csp      string
+		expected map[string]string
+	}{
+		{
+			name: "simple CSP",
+			csp:  "default-src 'self'; script-src 'self' https://example.com",
+			expected: map[string]string{
+				"default-src": "'self'",
+				"script-src":  "'self' https://example.com",
+			},
+		},
+		{
+			name: "CSP with upgrade-insecure-requests",
+			csp:  "default-src 'self'; upgrade-insecure-requests",
+			expected: map[string]string{
+				"default-src":               "'self'",
+				"upgrade-insecure-requests": "",
+			},
+		},
+		{
+			name: "CSP with extra whitespace",
+			csp:  "  default-src   'self'  ;   script-src 'none'  ",
+			expected: map[string]string{
+				"default-src": "'self'",
+				"script-src":  "'none'",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			directives := parseCSPDirectives(tt.csp)
+
+			for key, expectedValue := range tt.expected {
+				if value, ok := directives[key]; !ok {
+					t.Errorf("Missing directive '%s'", key)
+				} else if key != "upgrade-insecure-requests" && value != expectedValue {
+					// Skip value check for directives without values
+					t.Errorf("Directive '%s' = '%s', want '%s'", key, value, expectedValue)
+				}
+			}
+		})
+	}
+}
+
+// TestCSPAnalysisInCheck tests that CSP analysis is integrated into Check
+func TestCSPAnalysisInCheck(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Security-Policy", "script-src 'self' 'unsafe-inline'")
+		w.WriteHeader(200)
+	}))
+	defer server.Close()
+
+	opts := &Options{
+		Timeout:    10,
+		Method:     "GET",
+		DisableSSL: true,
+	}
+
+	c := New(opts)
+	result := c.Check(server.URL)
+
+	// Find CSP header in results
+	var cspHeader *HeaderInfo
+	for i := range result.PresentHeaders {
+		if result.PresentHeaders[i].Name == "Content-Security-Policy" {
+			cspHeader = &result.PresentHeaders[i]
+			break
+		}
+	}
+
+	if cspHeader == nil {
+		t.Fatal("CSP header not found in results")
+	}
+
+	if cspHeader.Status != severityWarning {
+		t.Errorf("CSP status = %s, want 'warning'", cspHeader.Status)
+	}
+
+	if len(cspHeader.Issues) == 0 {
+		t.Error("CSP issues should not be empty for unsafe CSP")
+	}
+
+	// Check that unsafe-inline issue is reported
+	found := false
+	for _, issue := range cspHeader.Issues {
+		if contains(issue, "unsafe-inline") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Expected unsafe-inline issue, got: %v", cspHeader.Issues)
+	}
+}
+
+// TestAnalyzeReferrerPolicy tests Referrer-Policy analysis
+func TestAnalyzeReferrerPolicy(t *testing.T) {
+	tests := []struct {
+		name       string
+		value      string
+		wantIssues bool
+		contains   string
+	}{
+		{"strict-origin-when-cross-origin is safe", "strict-origin-when-cross-origin", false, ""},
+		{"no-referrer is safe", "no-referrer", false, ""},
+		{"same-origin is safe", "same-origin", false, ""},
+		{"strict-origin is safe", "strict-origin", false, ""},
+		{"unsafe-url is unsafe", "unsafe-url", true, "leak"},
+		{"origin is unsafe", "origin", true, "leak"},
+		{"origin-when-cross-origin is unsafe", "origin-when-cross-origin", true, "leak"},
+		{"no-referrer-when-downgrade is unsafe", "no-referrer-when-downgrade", true, "leak"},
+		{"multiple values uses last", "origin, strict-origin-when-cross-origin", false, ""},
+		{"invalid value", "invalid-policy", true, "unrecognized"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			issues := analyzeReferrerPolicy(tt.value)
+			if tt.wantIssues && len(issues) == 0 {
+				t.Error("Expected issues but got none")
+			}
+			if !tt.wantIssues && len(issues) > 0 {
+				t.Errorf("Expected no issues but got: %v", issues)
+			}
+			if tt.contains != "" {
+				found := false
+				for _, issue := range issues {
+					if contains(issue, tt.contains) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("Expected issue containing '%s', got: %v", tt.contains, issues)
+				}
+			}
+		})
+	}
+}
+
+// TestAnalyzeHSTS tests HSTS analysis
+func TestAnalyzeHSTS(t *testing.T) {
+	tests := []struct {
+		name       string
+		value      string
+		wantIssues bool
+		contains   string
+	}{
+		{"valid max-age 1 year", "max-age=31536000", false, ""},
+		{"valid max-age 6 months", "max-age=15768000", false, ""},
+		{"max-age=0 disables HSTS", "max-age=0", true, "disables"},
+		{"max-age less than 6 months", "max-age=3600", true, "less than"},
+		{"missing max-age", "includeSubDomains", true, "missing"},
+		{
+			"preload without includeSubDomains",
+			"max-age=31536000; preload",
+			true,
+			"includeSubDomains",
+		},
+		{"valid with preload", "max-age=31536000; includeSubDomains; preload", false, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			issues := analyzeHSTS(tt.value)
+			if tt.wantIssues && len(issues) == 0 {
+				t.Error("Expected issues but got none")
+			}
+			if !tt.wantIssues && len(issues) > 0 {
+				t.Errorf("Expected no issues but got: %v", issues)
+			}
+			if tt.contains != "" {
+				found := false
+				for _, issue := range issues {
+					if contains(issue, tt.contains) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("Expected issue containing '%s', got: %v", tt.contains, issues)
+				}
+			}
+		})
+	}
+}
+
+// TestAnalyzeCORP tests Cross-Origin-Resource-Policy analysis
+func TestAnalyzeCORP(t *testing.T) {
+	tests := []struct {
+		name       string
+		value      string
+		wantIssues bool
+	}{
+		{"same-origin is valid", "same-origin", false},
+		{"same-site is valid", "same-site", false},
+		{"cross-origin warns", "cross-origin", true},
+		{"invalid value", "invalid", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			issues := analyzeCORP(tt.value)
+			if tt.wantIssues && len(issues) == 0 {
+				t.Error("Expected issues but got none")
+			}
+			if !tt.wantIssues && len(issues) > 0 {
+				t.Errorf("Expected no issues but got: %v", issues)
+			}
+		})
+	}
+}
+
+// TestAnalyzeXFrameOptions tests X-Frame-Options analysis
+func TestAnalyzeXFrameOptions(t *testing.T) {
+	tests := []struct {
+		name       string
+		value      string
+		wantIssues bool
+	}{
+		{"DENY is valid", "DENY", false},
+		{"deny lowercase is valid", "deny", false},
+		{"SAMEORIGIN is valid", "SAMEORIGIN", false},
+		{"ALLOW-FROM warns deprecated", "ALLOW-FROM https://example.com", true},
+		{"invalid value", "INVALID", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			issues := analyzeXFrameOptions(tt.value)
+			if tt.wantIssues && len(issues) == 0 {
+				t.Error("Expected issues but got none")
+			}
+			if !tt.wantIssues && len(issues) > 0 {
+				t.Errorf("Expected no issues but got: %v", issues)
+			}
+		})
+	}
+}
+
+// TestAnalyzeCookies tests cookie security analysis
+func TestAnalyzeCookies(t *testing.T) {
+	tests := []struct {
+		name       string
+		cookies    []*http.Cookie
+		isHTTPS    bool
+		hasHSTS    bool
+		wantIssues bool
+		issueCount int
+	}{
+		{
+			name: "secure session cookie",
+			cookies: []*http.Cookie{
+				{Name: "session", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode},
+			},
+			isHTTPS:    true,
+			hasHSTS:    true,
+			wantIssues: false,
+		},
+		{
+			name: "session cookie missing HttpOnly",
+			cookies: []*http.Cookie{
+				{Name: "session", Secure: true, HttpOnly: false, SameSite: http.SameSiteLaxMode},
+			},
+			isHTTPS:    true,
+			hasHSTS:    true,
+			wantIssues: true,
+		},
+		{
+			name: "cookie missing Secure on HTTPS",
+			cookies: []*http.Cookie{
+				{Name: "mycookie", Secure: false},
+			},
+			isHTTPS:    true,
+			hasHSTS:    false,
+			wantIssues: true,
+		},
+		{
+			name: "cookie missing Secure but protected by HSTS",
+			cookies: []*http.Cookie{
+				{Name: "mycookie", Secure: false},
+			},
+			isHTTPS:    true,
+			hasHSTS:    true,
+			wantIssues: true, // Still an issue, but less severe
+		},
+		{
+			name: "session cookie missing SameSite",
+			cookies: []*http.Cookie{
+				{Name: "sessionid", Secure: true, HttpOnly: true},
+			},
+			isHTTPS:    true,
+			hasHSTS:    true,
+			wantIssues: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := analyzeCookies(tt.cookies, tt.isHTTPS, tt.hasHSTS)
+			hasIssues := false
+			for _, c := range result {
+				if len(c.Issues) > 0 {
+					hasIssues = true
+					break
+				}
+			}
+			if tt.wantIssues && !hasIssues {
+				t.Error("Expected cookie issues but got none")
+			}
+			if !tt.wantIssues && hasIssues {
+				t.Errorf("Expected no cookie issues but got some")
+			}
+		})
+	}
+}
+
+// TestAnalyzeCORS tests CORS configuration analysis
+func TestAnalyzeCORS(t *testing.T) {
+	tests := []struct {
+		name       string
+		headers    http.Header
+		wantCORS   bool
+		wantIssues bool
+		contains   string
+	}{
+		{
+			name:     "no CORS headers",
+			headers:  http.Header{},
+			wantCORS: false,
+		},
+		{
+			name: "specific origin is safe",
+			headers: http.Header{
+				"Access-Control-Allow-Origin": []string{"https://example.com"},
+			},
+			wantCORS:   true,
+			wantIssues: false,
+		},
+		{
+			name: "wildcard origin warns",
+			headers: http.Header{
+				"Access-Control-Allow-Origin": []string{"*"},
+			},
+			wantCORS:   true,
+			wantIssues: true,
+			contains:   "public",
+		},
+		{
+			name: "wildcard with credentials is critical",
+			headers: http.Header{
+				"Access-Control-Allow-Origin":      []string{"*"},
+				"Access-Control-Allow-Credentials": []string{"true"},
+			},
+			wantCORS:   true,
+			wantIssues: true,
+			contains:   "CRITICAL",
+		},
+		{
+			name: "null origin is dangerous",
+			headers: http.Header{
+				"Access-Control-Allow-Origin": []string{"null"},
+			},
+			wantCORS:   true,
+			wantIssues: true,
+			contains:   "null",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := analyzeCORS(tt.headers)
+			if tt.wantCORS && result == nil {
+				t.Error("Expected CORS info but got nil")
+				return
+			}
+			if !tt.wantCORS && result != nil {
+				t.Error("Expected no CORS info but got some")
+				return
+			}
+			if result == nil {
+				return
+			}
+			if tt.wantIssues && len(result.Issues) == 0 {
+				t.Error("Expected CORS issues but got none")
+			}
+			if !tt.wantIssues && len(result.Issues) > 0 {
+				t.Errorf("Expected no CORS issues but got: %v", result.Issues)
+			}
+			if tt.contains != "" {
+				found := false
+				for _, issue := range result.Issues {
+					if contains(issue, tt.contains) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("Expected issue containing '%s', got: %v", tt.contains, result.Issues)
+				}
+			}
+		})
+	}
+}
+
+// TestIsSessionCookie tests session cookie detection
+func TestIsSessionCookie(t *testing.T) {
+	tests := []struct {
+		name     string
+		expected bool
+	}{
+		{"session", true},
+		{"PHPSESSID", true},
+		{"JSESSIONID", true},
+		{"auth_token", true},
+		{"jwt_token", true},
+		{"mycookie", false},
+		{"preferences", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isSessionCookie(tt.name)
+			if result != tt.expected {
+				t.Errorf("isSessionCookie(%s) = %v, want %v", tt.name, result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestIsCSRFCookie tests CSRF cookie detection
+func TestIsCSRFCookie(t *testing.T) {
+	tests := []struct {
+		name     string
+		expected bool
+	}{
+		{"csrftoken", true},
+		{"_csrf", true},
+		{"xsrf-token", true},
+		{"session", false},
+		{"mycookie", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isCSRFCookie(tt.name)
+			if result != tt.expected {
+				t.Errorf("isCSRFCookie(%s) = %v, want %v", tt.name, result, tt.expected)
+			}
+		})
+	}
+}
+
+// helper function to check if a string contains a substring
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || s != "" && containsSubstring(s, substr))
+}
+
+func containsSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }

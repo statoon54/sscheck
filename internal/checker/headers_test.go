@@ -137,3 +137,142 @@ func TestHeaderInfoStruct(t *testing.T) {
 		t.Errorf("Severity = %s, want warning", info.Severity)
 	}
 }
+
+func TestReferrerPolicyConstants(t *testing.T) {
+	// Verify unsafe policies are defined
+	expectedUnsafe := []string{
+		"unsafe-url",
+		"origin",
+		"origin-when-cross-origin",
+		"no-referrer-when-downgrade",
+	}
+	for _, expected := range expectedUnsafe {
+		found := false
+		for _, policy := range ReferrerPolicyUnsafe {
+			if policy == expected {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("ReferrerPolicyUnsafe missing %s", expected)
+		}
+	}
+
+	// Verify safe policies are defined
+	expectedPrivate := []string{
+		"no-referrer",
+		"same-origin",
+		"strict-origin",
+		"strict-origin-when-cross-origin",
+	}
+	for _, expected := range expectedPrivate {
+		found := false
+		for _, policy := range ReferrerPolicyPrivate {
+			if policy == expected {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("ReferrerPolicyPrivate missing %s", expected)
+		}
+	}
+}
+
+func TestHSTSMinMaxAge(t *testing.T) {
+	// 6 months in seconds = 15768000
+	if HSTSMinMaxAge != 15768000 {
+		t.Errorf("HSTSMinMaxAge = %d, want 15768000", HSTSMinMaxAge)
+	}
+}
+
+func TestSessionCookieNames(t *testing.T) {
+	// Verify common session cookie names are defined
+	expectedNames := []string{"session", "phpsessid", "jsessionid", "auth", "token"}
+	for _, expected := range expectedNames {
+		found := false
+		for _, name := range SessionCookieNames {
+			if name == expected {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("SessionCookieNames missing %s", expected)
+		}
+	}
+}
+
+func TestCSRFCookieNames(t *testing.T) {
+	// Verify common CSRF cookie names are defined
+	expectedNames := []string{"csrf", "csrftoken", "xsrf"}
+	for _, expected := range expectedNames {
+		found := false
+		for _, name := range CSRFCookieNames {
+			if name == expected {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("CSRFCookieNames missing %s", expected)
+		}
+	}
+}
+
+func TestCookieInfoStruct(t *testing.T) {
+	info := CookieInfo{
+		Name:     "session",
+		Secure:   true,
+		HttpOnly: true,
+		SameSite: "Strict",
+		Path:     "/",
+		Issues:   []string{"test issue"},
+	}
+
+	if info.Name != "session" {
+		t.Errorf("Name = %s, want session", info.Name)
+	}
+	if !info.Secure {
+		t.Error("Secure should be true")
+	}
+	if !info.HttpOnly {
+		t.Error("HttpOnly should be true")
+	}
+	if info.SameSite != "Strict" {
+		t.Errorf("SameSite = %s, want Strict", info.SameSite)
+	}
+	if info.Path != "/" {
+		t.Errorf("Path = %s, want /", info.Path)
+	}
+	if len(info.Issues) != 1 || info.Issues[0] != "test issue" {
+		t.Errorf("Issues = %v, want [test issue]", info.Issues)
+	}
+}
+
+func TestCORSInfoStruct(t *testing.T) {
+	info := CORSInfo{
+		AllowOrigin:      "*",
+		AllowCredentials: true,
+		AllowMethods:     "GET, POST",
+		AllowHeaders:     "Content-Type",
+		Issues:           []string{"wildcard origin"},
+	}
+
+	if info.AllowOrigin != "*" {
+		t.Errorf("AllowOrigin = %s, want *", info.AllowOrigin)
+	}
+	if !info.AllowCredentials {
+		t.Error("AllowCredentials should be true")
+	}
+	if info.AllowMethods != "GET, POST" {
+		t.Errorf("AllowMethods = %s, want GET, POST", info.AllowMethods)
+	}
+	if info.AllowHeaders != "Content-Type" {
+		t.Errorf("AllowHeaders = %s, want Content-Type", info.AllowHeaders)
+	}
+	if len(info.Issues) != 1 || info.Issues[0] != "wildcard origin" {
+		t.Errorf("Issues = %v, want [wildcard origin]", info.Issues)
+	}
+}

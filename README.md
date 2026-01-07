@@ -11,23 +11,26 @@ A Go implementation of [shcheck](https://github.com/santoru/shcheck) - a tool to
 - 🔧 Customizable headers and methods
 - 🌐 Proxy support
 - 📁 Batch scanning from file
+- 🍪 Cookie security analysis (Secure, HttpOnly, SameSite flags)
+- 🌍 CORS configuration analysis
+- 🛡️ In-depth security policy analysis (inspired by [Mozilla Observatory](https://developer.mozilla.org/en-US/observatory/docs/tests_and_scoring))
 
 ## Security Headers Checked
 
-| Header | Severity |
-| -------- | ---------- |
-| Strict-Transport-Security (HSTS) | Error |
-| Content-Security-Policy (CSP) | Warning |
-| X-Frame-Options | Warning |
-| X-Content-Type-Options | Warning |
-| Referrer-Policy | Warning |
-| Permissions-Policy | Warning |
-| Cross-Origin-Embedder-Policy | Warning |
-| Cross-Origin-Resource-Policy | Warning |
-| Cross-Origin-Opener-Policy | Warning |
-| X-XSS-Protection | Deprecated |
-| X-Permitted-Cross-Domain-Policies | Deprecated |
-| Expect-CT | Deprecated |
+| Header | Severity | Analysis |
+| -------- | ---------- | -------- |
+| Strict-Transport-Security (HSTS) | Error | max-age validation (≥6 months), preload requirements |
+| Content-Security-Policy (CSP) | Warning | unsafe-inline, unsafe-eval, data:, broad sources, missing directives |
+| X-Frame-Options | Warning | ALLOW-FROM deprecation warning |
+| X-Content-Type-Options | Warning | Must be 'nosniff' |
+| Referrer-Policy | Warning | Unsafe policy detection, multiple values support |
+| Permissions-Policy | Warning | |
+| Cross-Origin-Embedder-Policy | Warning | |
+| Cross-Origin-Resource-Policy | Warning | cross-origin warning |
+| Cross-Origin-Opener-Policy | Warning | |
+| X-XSS-Protection | Deprecated | |
+| X-Permitted-Cross-Domain-Policies | Deprecated | |
+| Expect-CT | Deprecated | |
 
 ## Installation
 
@@ -69,6 +72,8 @@ Usage:
 
 Flags:
   -c, --cookie string        Set cookies for the request
+      --cookies              Display cookie security analysis
+      --cors                 Display CORS configuration analysis
   -k, --deprecated           Display deprecated headers
   -d, --disable-ssl          Disable SSL/TLS certificate validation
   -f, --follow               Follow redirects (default true)
@@ -115,6 +120,15 @@ sscheck -d https://self-signed.example.com
 
 # Batch scan with 20 workers
 sscheck -w 20 --hfile large-hosts.txt
+
+# Cookie security analysis (use -m GET to receive cookies)
+sscheck --cookies -m GET https://example.com
+
+# CORS configuration analysis (CORS headers are typically on APIs)
+sscheck --cors -m GET https://api.example.com
+
+# Full security analysis
+sscheck --cookies --cors -m GET -I -x -k https://example.com
 ```
 
 ## Interactive Mode
@@ -131,6 +145,49 @@ Controls:
 - `a`: Toggle show all headers
 - `q` or `Esc`: Quit
 
+## Security Analysis
+
+sscheck performs in-depth security analysis inspired by [Mozilla Observatory](https://developer.mozilla.org/en-US/observatory/docs/tests_and_scoring):
+
+### Content-Security-Policy (CSP)
+
+- Detects `unsafe-inline` and `unsafe-eval` usage
+- Warns about `data:` URI schemes
+- Identifies overly broad sources (`*`, `http:`, `https:`)
+- Checks for missing critical directives (`default-src`, `script-src`, `object-src`)
+
+### Strict-Transport-Security (HSTS)
+
+- Validates `max-age` (minimum 6 months / 15768000 seconds)
+- Detects `max-age=0` which disables HSTS
+- Warns if `preload` is set without `includeSubDomains`
+
+### Cookie Security (`--cookies`)
+
+- Checks for `Secure` flag (required for HTTPS)
+- Checks for `HttpOnly` flag
+- Validates `SameSite` attribute (Strict, Lax, None)
+- Identifies session cookies and CSRF tokens
+
+### CORS Configuration (`--cors`)
+
+- Detects wildcard origin (`*`) allowing any domain
+- Warns about `Access-Control-Allow-Credentials: true` with wildcards
+- Identifies `null` origin which can be exploited
+
+### Referrer-Policy
+
+- Detects unsafe policies (`unsafe-url`, `no-referrer-when-downgrade`)
+- Supports multiple comma-separated values (uses last valid value)
+
+### X-Frame-Options
+
+- Warns about deprecated `ALLOW-FROM` directive (use CSP `frame-ancestors` instead)
+
+### Cross-Origin-Resource-Policy
+
+- Warns when set to `cross-origin` (most permissive)
+
 ## JSON Output Format
 
 ```json
@@ -145,6 +202,23 @@ Controls:
     "missing_headers": [
       {"name": "Content-Security-Policy", "severity": "warning"}
     ],
+    "cookies": [
+      {
+        "name": "session_id",
+        "secure": true,
+        "httponly": true,
+        "samesite": "Strict",
+        "path": "/",
+        "issues": []
+      }
+    ],
+    "cors": {
+      "allow_origin": "*",
+      "allow_credentials": "false",
+      "allow_methods": "GET, POST",
+      "allow_headers": "Content-Type",
+      "issues": ["CORS allows all origins with wildcard (*)"]
+    },
     "safe_count": 5,
     "unsafe_count": 3
   }
@@ -162,4 +236,5 @@ MIT License - see [LICENSE](LICENSE) for details.
 ## Credits
 
 - Inspired by [shcheck](https://github.com/santoru/shcheck) by santoru
-- Built with [Bubbletea](https://github.com/charmbracelet/bubbletea) and [Lipgloss](https://github.com/charmbracelet/lipgloss) [gookit](https://github.com/gookit/color)
+- Security analysis based on [Mozilla Observatory](https://developer.mozilla.org/en-US/observatory/docs/tests_and_scoring)
+- Built with [Bubbletea](https://github.com/charmbracelet/bubbletea), [Lipgloss](https://github.com/charmbracelet/lipgloss) and [gookit/color](https://github.com/gookit/color)
