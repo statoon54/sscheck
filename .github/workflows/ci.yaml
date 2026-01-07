@@ -37,7 +37,7 @@ jobs:
           gpg --verify codecov.SHA256SUM.sig codecov.SHA256SUM
           sha256sum -c codecov.SHA256SUM
           chmod +x codecov
-          ./codecov upload-process -t "$CODECOV_TOKEN" -f coverage.out
+          ./codecov upload-process -t "$CODECOV_TOKEN" -f coverage.out --git-service github-actions
 
   lint:
     runs-on: ubuntu-latest
