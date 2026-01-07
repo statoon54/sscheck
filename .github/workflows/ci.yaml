@@ -25,6 +25,9 @@ jobs:
         run: go test -v -coverprofile=coverage.out ./...
 
       - name: Upload coverage to Codecov
+        if: ${{ env.CODECOV_TOKEN != '' }}
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
         run: |
           apk add --no-cache gnupg
           curl https://keybase.io/codecovsecurity/pgp_keys.asc | gpg --no-default-keyring --keyring trustedkeys.gpg --import
@@ -34,8 +37,7 @@ jobs:
           gpg --verify codecov.SHA256SUM.sig codecov.SHA256SUM
           sha256sum -c codecov.SHA256SUM
           chmod +x codecov
-          ./codecov upload-process -f coverage.out
-        continue-on-error: true
+          ./codecov upload-process -t "$CODECOV_TOKEN" -f coverage.out
 
   lint:
     runs-on: ubuntu-latest
