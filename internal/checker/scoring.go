@@ -1,6 +1,18 @@
 package checker
 
-import "strings"
+import (
+	"net/url"
+	"regexp"
+	"slices"
+	"strings"
+)
+
+var (
+	// scriptRegex matches script tags with src attribute
+	scriptRegex = regexp.MustCompile("(?i)<script[^>]*\\ssrc=[\"']([^\"']+)[\"'][^>]*>")
+	// integrityRegex matches integrity attribute in script tags
+	integrityRegex = regexp.MustCompile("(?i)\\sintegrity=[\"'][^\"']+[\"']")
+)
 
 // ObservatoryScoring defines the scoring rules for each header/configuration
 type ObservatoryScoring struct {
@@ -18,6 +30,8 @@ type ObservatoryScoring struct {
 	HSTSMissingHTTPS         int // -20
 	HSTSShortMaxAge          int // -10
 	HSTSPreload              int // +5 (bonus)
+	SRIMissing               int // -5
+	SRIPresent               int // +5 (bonus)
 	XCTOMissing              int // -5
 	XCTOInvalid              int // -5
 	XFOPresent               int // +5 (bonus)
@@ -42,6 +56,8 @@ var observatoryRules = ObservatoryScoring{
 	HSTSMissingHTTPS:         -20,
 	HSTSShortMaxAge:          -10,
 	HSTSPreload:              5,
+	SRIMissing:               -5,
+	SRIPresent:               5,
 	XCTOMissing:              -5,
 	XCTOInvalid:              -5,
 	XFOPresent:               5,
@@ -51,68 +67,120 @@ var observatoryRules = ObservatoryScoring{
 	CORPInvalid:              -5,
 }
 
-// applyScorePenalty applies a scoring penalty/bonus based on the rule name
-func applyScorePenalty(score *int, rule string) {
+// createScoreRule creates a ScoreRule with description and modifier
+func createScoreRule(rule string, applied bool) ScoreRule {
+	var description string
+	var modifier int
+
 	switch rule {
 	case "csp-missing":
-		*score += observatoryRules.CSPMissing
+		description = "CSP missing"
+		modifier = observatoryRules.CSPMissing
 	case "csp-unsafe-inline":
-		*score += observatoryRules.CSPUnsafeInline
+		description = "CSP unsafe-inline"
+		modifier = observatoryRules.CSPUnsafeInline
 	case "csp-unsafe-eval":
-		*score += observatoryRules.CSPUnsafeEval
+		description = "CSP unsafe-eval"
+		modifier = observatoryRules.CSPUnsafeEval
 	case "cookies-secure-all":
-		*score += observatoryRules.CookiesSecureAll
+		description = "Cookies secure (bonus)"
+		modifier = observatoryRules.CookiesSecureAll
 	case "cookies-session-no-secure":
-		*score += observatoryRules.CookiesSessionNoSecure
+		description = "Session cookie without Secure flag"
+		modifier = observatoryRules.CookiesSessionNoSecure
 	case "cookies-session-no-httponly":
-		*score += observatoryRules.CookiesSessionNoHttpOnly
+		description = "Session cookie without HttpOnly"
+		modifier = observatoryRules.CookiesSessionNoHttpOnly
 	case "cookies-no-secure":
-		*score += observatoryRules.CookiesNoSecure
+		description = "Cookies without Secure flag"
+		modifier = observatoryRules.CookiesNoSecure
 	case "cookies-no-secure-hsts":
-		*score += observatoryRules.CookiesNoSecureWithHSTS
+		description = "Cookies without Secure (HSTS enabled)"
+		modifier = observatoryRules.CookiesNoSecureWithHSTS
 	case "cors-wildcard-critical":
-		*score += observatoryRules.CORSWildcardCritical
+		description = "CORS wildcard with credentials"
+		modifier = observatoryRules.CORSWildcardCritical
 	case "referrer-private":
-		*score += observatoryRules.ReferrerPrivate
+		description = "Referrer-Policy private (bonus)"
+		modifier = observatoryRules.ReferrerPrivate
 	case "referrer-unsafe":
-		*score += observatoryRules.ReferrerUnsafe
+		description = "Referrer-Policy unsafe"
+		modifier = observatoryRules.ReferrerUnsafe
 	case "hsts-missing":
-		*score += observatoryRules.HSTSMissingHTTPS
+		description = "HSTS missing"
+		modifier = observatoryRules.HSTSMissingHTTPS
 	case "hsts-short":
-		*score += observatoryRules.HSTSShortMaxAge
+		description = "HSTS max-age too short"
+		modifier = observatoryRules.HSTSShortMaxAge
 	case "hsts-preload":
-		*score += observatoryRules.HSTSPreload
+		description = "HSTS preload (bonus)"
+		modifier = observatoryRules.HSTSPreload
+	case "sri-missing":
+		description = "SRI missing on external scripts"
+		modifier = observatoryRules.SRIMissing
+	case "sri-present":
+		description = "SRI present (bonus)"
+		modifier = observatoryRules.SRIPresent
 	case "xcto-missing":
-		*score += observatoryRules.XCTOMissing
+		description = "X-Content-Type-Options missing"
+		modifier = observatoryRules.XCTOMissing
 	case "xcto-invalid":
-		*score += observatoryRules.XCTOInvalid
+		description = "X-Content-Type-Options invalid"
+		modifier = observatoryRules.XCTOInvalid
 	case "xfo-present":
-		*score += observatoryRules.XFOPresent
+		description = "X-Frame-Options present (bonus)"
+		modifier = observatoryRules.XFOPresent
 	case "xfo-missing":
-		*score += observatoryRules.XFOMissing
+		description = "X-Frame-Options missing"
+		modifier = observatoryRules.XFOMissing
 	case "xfo-invalid":
-		*score += observatoryRules.XFOInvalid
+		description = "X-Frame-Options invalid"
+		modifier = observatoryRules.XFOInvalid
 	case "corp-same-origin":
-		*score += observatoryRules.CORPSameOrigin
+		description = "CORP same-origin (bonus)"
+		modifier = observatoryRules.CORPSameOrigin
 	case "corp-invalid":
-		*score += observatoryRules.CORPInvalid
+		description = "CORP invalid"
+		modifier = observatoryRules.CORPInvalid
+	}
+
+	return ScoreRule{
+		Description: description,
+		Modifier:    modifier,
+		Applied:     applied,
 	}
 }
 
+// applyScorePenalty applies a scoring penalty/bonus based on the rule name
+func applyScorePenalty(score *int, rule string) {
+	r := createScoreRule(rule, true)
+	*score += r.Modifier
+}
+
 // applyObservatoryScoring applies Mozilla Observatory scoring based on already collected data
-func applyObservatoryScoring(result *Result, isHTTPS bool) {
+func applyObservatoryScoring(result *Result, isHTTPS bool, htmlContent string) {
+	// Track bonuses separately - only apply if final score >= 90
+	var bonuses []string
+	result.ScoreRules = []ScoreRule{} // Initialize
+
 	// CSP scoring - check if present and for issues
 	cspHeader := getHeaderByName(result.PresentHeaders, "Content-Security-Policy")
 	if cspHeader == nil {
-		applyScorePenalty(&result.Score, "csp-missing")
+		rule := createScoreRule("csp-missing", true)
+		result.ScoreRules = append(result.ScoreRules, rule)
+		result.Score += rule.Modifier
 	} else {
 		// CSP is present, check for unsafe directives in issues
 		for _, issue := range cspHeader.Issues {
 			if strings.Contains(issue, "unsafe-inline") && strings.Contains(issue, "script-src") {
-				applyScorePenalty(&result.Score, "csp-unsafe-inline")
+				rule := createScoreRule("csp-unsafe-inline", true)
+				result.ScoreRules = append(result.ScoreRules, rule)
+				result.Score += rule.Modifier
 			}
 			if strings.Contains(issue, "unsafe-eval") {
-				applyScorePenalty(&result.Score, "csp-unsafe-eval")
+				rule := createScoreRule("csp-unsafe-eval", true)
+				result.ScoreRules = append(result.ScoreRules, rule)
+				result.Score += rule.Modifier
 			}
 		}
 	}
@@ -143,17 +211,27 @@ func applyObservatoryScoring(result *Result, isHTTPS bool) {
 
 		// Apply cookie scoring rules
 		if hasSecureCookies && hasHttpOnlySessions && hasSameSite {
-			applyScorePenalty(&result.Score, "cookies-secure-all")
+			rule := createScoreRule("cookies-secure-all", true)
+			result.ScoreRules = append(result.ScoreRules, rule)
+			result.Score += rule.Modifier
 		} else if hasSessionWithoutSecure {
-			applyScorePenalty(&result.Score, "cookies-session-no-secure")
+			rule := createScoreRule("cookies-session-no-secure", true)
+			result.ScoreRules = append(result.ScoreRules, rule)
+			result.Score += rule.Modifier
 		} else if hasSessionWithoutHttpOnly {
-			applyScorePenalty(&result.Score, "cookies-session-no-httponly")
+			rule := createScoreRule("cookies-session-no-httponly", true)
+			result.ScoreRules = append(result.ScoreRules, rule)
+			result.Score += rule.Modifier
 		} else if !hasSecureCookies {
 			hstsHeader := getHeaderByName(result.PresentHeaders, "Strict-Transport-Security")
 			if hstsHeader != nil {
-				applyScorePenalty(&result.Score, "cookies-no-secure-hsts")
+				rule := createScoreRule("cookies-no-secure-hsts", true)
+				result.ScoreRules = append(result.ScoreRules, rule)
+				result.Score += rule.Modifier
 			} else {
-				applyScorePenalty(&result.Score, "cookies-no-secure")
+				rule := createScoreRule("cookies-no-secure", true)
+				result.ScoreRules = append(result.ScoreRules, rule)
+				result.Score += rule.Modifier
 			}
 		}
 	}
@@ -162,7 +240,9 @@ func applyObservatoryScoring(result *Result, isHTTPS bool) {
 	if result.CORS != nil {
 		for _, issue := range result.CORS.Issues {
 			if strings.Contains(issue, "CRITICAL") {
-				applyScorePenalty(&result.Score, "cors-wildcard-critical")
+				rule := createScoreRule("cors-wildcard-critical", true)
+				result.ScoreRules = append(result.ScoreRules, rule)
+				result.Score += rule.Modifier
 				break
 			}
 		}
@@ -171,51 +251,70 @@ func applyObservatoryScoring(result *Result, isHTTPS bool) {
 	// Referrer-Policy scoring
 	refHeader := getHeaderByName(result.PresentHeaders, "Referrer-Policy")
 	if refHeader != nil {
-		value := strings.ToLower(refHeader.Value)
-		// Check for private values (bonus)
-		privateValues := []string{
-			"no-referrer",
-			"same-origin",
-			"strict-origin",
-			"strict-origin-when-cross-origin",
-		}
-		for _, pv := range privateValues {
-			if strings.Contains(value, pv) {
-				applyScorePenalty(&result.Score, "referrer-private")
+		// Parse value - multiple policies can be comma-separated, browser uses last valid one
+		policies := strings.Split(refHeader.Value, ",")
+		var lastPolicy string
+		for i := len(policies) - 1; i >= 0; i-- {
+			p := strings.TrimSpace(strings.ToLower(policies[i]))
+			if p != "" {
+				lastPolicy = p
 				break
 			}
 		}
-		// Check for unsafe values (penalty)
-		if strings.Contains(value, "unsafe-url") {
-			applyScorePenalty(&result.Score, "referrer-unsafe")
+
+		if lastPolicy != "" {
+			// Check for unsafe values first (penalty)
+			hasUnsafe := false
+			if slices.Contains(ReferrerPolicyUnsafe, lastPolicy) {
+				rule := createScoreRule("referrer-unsafe", true)
+				result.ScoreRules = append(result.ScoreRules, rule)
+				result.Score += rule.Modifier
+				hasUnsafe = true
+			}
+
+			// Check for private values (bonus - applied only if score >= 90 and no unsafe values)
+			if !hasUnsafe {
+				if slices.Contains(ReferrerPolicyPrivate, lastPolicy) {
+					bonuses = append(bonuses, "referrer-private")
+				}
+			}
 		}
 	}
+	// Note: Referrer-Policy not implemented = 0 (no penalty according to Mozilla docs)
 
 	// HSTS scoring
 	hstsHeader := getHeaderByName(result.PresentHeaders, "Strict-Transport-Security")
 	if isHTTPS && hstsHeader == nil {
-		applyScorePenalty(&result.Score, "hsts-missing")
+		rule := createScoreRule("hsts-missing", true)
+		result.ScoreRules = append(result.ScoreRules, rule)
+		result.Score += rule.Modifier
 	} else if hstsHeader != nil {
 		// Check max-age duration
 		for _, issue := range hstsHeader.Issues {
 			if strings.Contains(issue, "less than 6 months") {
-				applyScorePenalty(&result.Score, "hsts-short")
+				rule := createScoreRule("hsts-short", true)
+				result.ScoreRules = append(result.ScoreRules, rule)
+				result.Score += rule.Modifier
 				break
 			}
 		}
-		// Check for preload bonus
+		// Check for preload bonus (applied only if score >= 90)
 		value := strings.ToLower(hstsHeader.Value)
 		if strings.Contains(value, "preload") && strings.Contains(value, "includesubdomains") {
-			applyScorePenalty(&result.Score, "hsts-preload")
+			bonuses = append(bonuses, "hsts-preload")
 		}
 	}
 
 	// X-Content-Type-Options scoring
 	xctoHeader := getHeaderByName(result.PresentHeaders, "X-Content-Type-Options")
 	if xctoHeader == nil {
-		applyScorePenalty(&result.Score, "xcto-missing")
+		rule := createScoreRule("xcto-missing", true)
+		result.ScoreRules = append(result.ScoreRules, rule)
+		result.Score += rule.Modifier
 	} else if len(xctoHeader.Issues) > 0 {
-		applyScorePenalty(&result.Score, "xcto-invalid")
+		rule := createScoreRule("xcto-invalid", true)
+		result.ScoreRules = append(result.ScoreRules, rule)
+		result.Score += rule.Modifier
 	}
 
 	// X-Frame-Options scoring
@@ -224,29 +323,71 @@ func applyObservatoryScoring(result *Result, isHTTPS bool) {
 		strings.Contains(strings.ToLower(cspHeader.Value), "frame-ancestors")
 
 	if xfoHeader != nil || cspFrameAncestors {
-		applyScorePenalty(&result.Score, "xfo-present")
+		// Bonus for XFO implementation (applied only if score >= 90)
+		bonuses = append(bonuses, "xfo-present")
 	} else {
-		applyScorePenalty(&result.Score, "xfo-missing")
+		rule := createScoreRule("xfo-missing", true)
+		result.ScoreRules = append(result.ScoreRules, rule)
+		result.Score += rule.Modifier
 	}
 
 	if xfoHeader != nil && len(xfoHeader.Issues) > 0 {
-		applyScorePenalty(&result.Score, "xfo-invalid")
+		rule := createScoreRule("xfo-invalid", true)
+		result.ScoreRules = append(result.ScoreRules, rule)
+		result.Score += rule.Modifier
 	}
+
+	// Subresource Integrity (SRI) scoring
+	// Only available with GET requests that return HTML content
+	if htmlContent != "" {
+		// Parse HTML to find external scripts
+		externalScripts, scriptsWithSRI := analyzeScriptTags(htmlContent, result.EffectiveURL)
+		if externalScripts > 0 {
+			if scriptsWithSRI == externalScripts {
+				// All external scripts have SRI (bonus - applied only if score >= 90)
+				bonuses = append(bonuses, "sri-present")
+			} else {
+				// Some external scripts without SRI
+				rule := createScoreRule("sri-missing", true)
+				result.ScoreRules = append(result.ScoreRules, rule)
+				result.Score += rule.Modifier
+			}
+		}
+	}
+	// Note: HEAD requests cannot assess SRI (HTML parsing required)
 
 	// Cross-Origin-Resource-Policy scoring
 	corpHeader := getHeaderByName(result.PresentHeaders, "Cross-Origin-Resource-Policy")
 	if corpHeader != nil {
 		value := strings.ToLower(corpHeader.Value)
 		if value == "same-origin" || value == "same-site" {
-			applyScorePenalty(&result.Score, "corp-same-origin")
+			// Bonus for CORP implementation (applied only if score >= 90)
+			bonuses = append(bonuses, "corp-same-origin")
 		} else if len(corpHeader.Issues) > 0 {
-			applyScorePenalty(&result.Score, "corp-invalid")
+			rule := createScoreRule("corp-invalid", true)
+			result.ScoreRules = append(result.ScoreRules, rule)
+			result.Score += rule.Modifier
 		}
 	}
 
 	// Ensure score doesn't go below 0
 	if result.Score < 0 {
 		result.Score = 0
+	}
+
+	// Apply bonuses only if score >= 90 (Mozilla Observatory rule)
+	if result.Score >= 90 {
+		for _, bonus := range bonuses {
+			rule := createScoreRule(bonus, true)
+			result.ScoreRules = append(result.ScoreRules, rule)
+			result.Score += rule.Modifier
+		}
+	} else {
+		// Track bonuses that weren't applied
+		for _, bonus := range bonuses {
+			rule := createScoreRule(bonus, false)
+			result.ScoreRules = append(result.ScoreRules, rule)
+		}
 	}
 }
 
@@ -290,4 +431,63 @@ func getHeaderByName(headers []HeaderInfo, name string) *HeaderInfo {
 		}
 	}
 	return nil
+}
+
+// analyzeScriptTags parses HTML to find external script tags and checks for SRI
+func analyzeScriptTags(htmlContent, baseURL string) (externalScripts, scriptsWithSRI int) {
+	matches := scriptRegex.FindAllStringSubmatch(htmlContent, -1)
+
+	for _, match := range matches {
+		if len(match) < 2 {
+			continue
+		}
+
+		src := match[1]
+
+		// Check if it's an external script (not relative path or data: URI)
+		if isExternalScript(src, baseURL) {
+			externalScripts++
+
+			// Check if the full script tag contains integrity attribute
+			fullTag := match[0]
+			if integrityRegex.MatchString(fullTag) {
+				scriptsWithSRI++
+			}
+		}
+	}
+
+	return externalScripts, scriptsWithSRI
+}
+
+// isExternalScript checks if a script src is external (different domain)
+func isExternalScript(src, baseURL string) bool {
+	// Data URIs are not external
+	if strings.HasPrefix(src, "data:") {
+		return false
+	}
+
+	// Relative paths are not external
+	if !strings.HasPrefix(src, "http://") && !strings.HasPrefix(src, "https://") &&
+		!strings.HasPrefix(src, "//") {
+		return false
+	}
+
+	// Protocol-relative URLs
+	if strings.HasPrefix(src, "//") {
+		src = "https:" + src
+	}
+
+	// Parse URLs to compare domains
+	baseURLParsed, err := url.Parse(baseURL)
+	if err != nil {
+		return true // Assume external if we can't parse
+	}
+
+	srcParsed, err := url.Parse(src)
+	if err != nil {
+		return true
+	}
+
+	// Compare hosts
+	return baseURLParsed.Host != srcParsed.Host
 }

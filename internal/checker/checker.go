@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"maps"
 	"net"
 	"net/http"
@@ -60,6 +61,7 @@ type Result struct {
 	UnsafeCount    int              `json:"unsafe_count"`
 	Score          int              `json:"score"`
 	Grade          string           `json:"grade"`
+	ScoreRules     []ScoreRule      `json:"score_rules,omitempty"`
 }
 
 // Checker is the main security header checker
@@ -361,8 +363,18 @@ func (c *Checker) Check(target string) *Result {
 		result.CORS = analyzeCORS(resp.Header)
 	}
 
+	// Read HTML content for SRI analysis (only for GET requests)
+	var htmlContent string
+	if c.opts.Method == "GET" {
+		// Read the response body
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err == nil {
+			htmlContent = string(bodyBytes)
+		}
+	}
+
 	// Apply final scoring adjustments based on collected data
-	applyObservatoryScoring(result, isHTTPS)
+	applyObservatoryScoring(result, isHTTPS, htmlContent)
 	result.Grade = scoreToGrade(result.Score)
 
 	return result

@@ -12,6 +12,7 @@ import (
 	"sscheck/internal/version"
 
 	"github.com/gookit/color"
+	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/spf13/cobra"
 )
 
@@ -34,6 +35,7 @@ var (
 	followRedirects bool
 	interactive     bool
 	workers         int
+	noSummary       bool
 )
 
 var rootCmd = &cobra.Command{
@@ -141,6 +143,7 @@ func init() {
 	rootCmd.Flags().
 		BoolVarP(&interactive, "interactive", "i", false, "Run in interactive mode with TUI")
 	rootCmd.Flags().IntVarP(&workers, "workers", "w", 10, "Number of concurrent workers")
+	rootCmd.Flags().BoolVar(&noSummary, "no-summary", false, "Disable score summary table")
 }
 
 // Load targets from a file, one per line
@@ -194,8 +197,142 @@ func runCLI(targets []string, opts *checker.Options) {
 		}
 		fmt.Println(string(output))
 	} else {
+		// Print detailed results
 		for _, result := range results {
 			printResult(result, opts)
+		}
+
+		// Print score summary table if multiple targets
+		if len(results) > 1 && !noSummary {
+			printScoreSummary(results)
+		}
+	}
+}
+
+// Print score summary table
+func printScoreSummary(results []*checker.Result) {
+	fmt.Println()
+	color.Cyan.Println(" 📊 OBSERVATORY SCORE SUMMARY")
+	fmt.Println()
+
+	// Create table
+	t := table.NewWriter()
+	t.SetOutputMirror(os.Stdout)
+	t.SetStyle(table.StyleRounded)
+
+	// Configure header
+	t.AppendHeader(table.Row{"Site", "Score", "Grade"})
+
+	// Add rows
+	for _, r := range results {
+		if r.Error != "" {
+			site := r.Target
+			if len(site) > 50 {
+				site = site[:47] + "..."
+			}
+			t.AppendRow(table.Row{
+				site,
+				color.Red.Sprint("ERROR"),
+				"-",
+			})
+		} else {
+			site := r.Target
+			if len(site) > 50 {
+				site = site[:47] + "..."
+			}
+			t.AppendRow(table.Row{
+				site,
+				getScoreColor(r.Score).Sprintf("%d", r.Score),
+				getGradeColor(r.Grade).Sprint(r.Grade),
+			})
+		}
+	}
+
+	// Calculate average score
+	totalScore := 0
+	validCount := 0
+	for _, r := range results {
+		if r.Error == "" {
+			totalScore += r.Score
+			validCount++
+		}
+	}
+
+	// Add separator and average row
+	if validCount > 0 {
+		avgScore := totalScore / validCount
+		t.AppendSeparator()
+		t.AppendRow(table.Row{
+			color.Bold.Sprint("Average"),
+			getScoreColor(avgScore).Sprintf("%d", avgScore),
+			"-",
+		})
+	}
+
+	// Render table
+	t.Render()
+	fmt.Println()
+
+	// Print applied scoring rules for each site (if any results have rules)
+	hasAnyRules := false
+	for _, r := range results {
+		if r.Error == "" && len(r.ScoreRules) > 0 {
+			hasAnyRules = true
+			break
+		}
+	}
+
+	if hasAnyRules {
+		color.Cyan.Println(" 📋 APPLIED SCORING RULES")
+		fmt.Println()
+
+		for _, r := range results {
+			if r.Error != "" || len(r.ScoreRules) == 0 {
+				continue
+			}
+
+			site := r.Target
+			if len(site) > 60 {
+				site = site[:57] + "..."
+			}
+			color.Bold.Printf(" %s (Score: %d)\n", site, r.Score)
+
+			penalties := []checker.ScoreRule{}
+			bonuses := []checker.ScoreRule{}
+			bonusesNotApplied := []checker.ScoreRule{}
+
+			for _, rule := range r.ScoreRules {
+				if rule.Modifier < 0 {
+					penalties = append(penalties, rule)
+				} else if rule.Applied {
+					bonuses = append(bonuses, rule)
+				} else {
+					bonusesNotApplied = append(bonusesNotApplied, rule)
+				}
+			}
+
+			if len(penalties) > 0 {
+				color.Red.Println("   Penalties:")
+				for _, rule := range penalties {
+					color.Gray.Printf("     • %s: %d\n", rule.Description, rule.Modifier)
+				}
+			}
+
+			if len(bonuses) > 0 {
+				color.Green.Println("   Bonuses:")
+				for _, rule := range bonuses {
+					color.Gray.Printf("     • %s: +%d\n", rule.Description, rule.Modifier)
+				}
+			}
+
+			if len(bonusesNotApplied) > 0 {
+				color.Yellow.Println("   Bonuses not applied (score < 90):")
+				for _, rule := range bonusesNotApplied {
+					color.Gray.Printf("     • %s: +%d\n", rule.Description, rule.Modifier)
+				}
+			}
+
+			fmt.Println()
 		}
 	}
 }
@@ -345,6 +482,51 @@ func printResult(result *checker.Result, opts *checker.Options) {
 		getScoreColor(result.Score).Sprintf("%d", result.Score),
 		getGradeColor(result.Grade).Sprint(result.Grade))
 	fmt.Println()
+
+	// Print applied scoring rules
+	if len(result.ScoreRules) > 0 {
+		fmt.Println()
+		color.Cyan.Println(" 📋 APPLIED SCORING RULES")
+		fmt.Println()
+
+		penalties := []checker.ScoreRule{}
+		bonuses := []checker.ScoreRule{}
+		bonusesNotApplied := []checker.ScoreRule{}
+
+		for _, rule := range result.ScoreRules {
+			if rule.Modifier < 0 {
+				penalties = append(penalties, rule)
+			} else if rule.Applied {
+				bonuses = append(bonuses, rule)
+			} else {
+				bonusesNotApplied = append(bonusesNotApplied, rule)
+			}
+		}
+
+		if len(penalties) > 0 {
+			color.Red.Println(" Penalties:")
+			for _, rule := range penalties {
+				color.Gray.Printf("   • %s: %d\n", rule.Description, rule.Modifier)
+			}
+			fmt.Println()
+		}
+
+		if len(bonuses) > 0 {
+			color.Green.Println(" Bonuses:")
+			for _, rule := range bonuses {
+				color.Gray.Printf("   • %s: +%d\n", rule.Description, rule.Modifier)
+			}
+			fmt.Println()
+		}
+
+		if len(bonusesNotApplied) > 0 {
+			color.Yellow.Println(" Bonuses not applied (score < 90):")
+			for _, rule := range bonusesNotApplied {
+				color.Gray.Printf("   • %s: +%d\n", rule.Description, rule.Modifier)
+			}
+			fmt.Println()
+		}
+	}
 }
 
 // Print Content-Security-Policy header with highlighted unsafe directives
@@ -385,7 +567,7 @@ func getScoreColor(score int) color.Color {
 	case score >= 70:
 		return color.Yellow
 	case score >= 50:
-		return color.Yellow
+		return color.Magenta
 	default:
 		return color.Red
 	}
@@ -398,8 +580,8 @@ func getGradeColor(grade string) color.Color {
 		return color.Green
 	case 'B':
 		return color.Yellow
-	case 'C', 'D':
-		return color.Yellow
+	case 'C':
+		return color.Magenta
 	default:
 		return color.Red
 	}

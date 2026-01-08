@@ -3,6 +3,7 @@ package checker
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -220,9 +221,9 @@ func TestApplyObservatoryScoring(t *testing.T) {
 				},
 			},
 			isHTTPS:       true,
-			expectedScore: 80,
-			expectedGrade: "B+",
-			explanation:   "100 + 5 (xfo bonus via csp frame-ancestors) - 20 (hsts missing) - 5 (xcto missing) = 80",
+			expectedScore: 75,
+			expectedGrade: "B",
+			explanation:   "100 - 20 (hsts missing) - 5 (xcto missing) = 75. XFO bonus not applied (score < 90)",
 		},
 		{
 			name: "HSTS with preload",
@@ -236,15 +237,53 @@ func TestApplyObservatoryScoring(t *testing.T) {
 				},
 			},
 			isHTTPS:       true,
-			expectedScore: 55,
+			expectedScore: 50,
 			expectedGrade: "C",
-			explanation:   "100 + 5 (hsts preload) - 25 (csp missing) - 5 (xcto missing) - 20 (xfo missing) = 55",
+			explanation:   "100 - 25 (csp missing) - 5 (xcto missing) - 20 (xfo missing) = 50. HSTS preload bonus not applied (score < 90)",
+		},
+		{
+			name: "External scripts without SRI (GET request)",
+			result: &Result{
+				Score:          100,
+				EffectiveURL:   "https://example.com",
+				PresentHeaders: []HeaderInfo{},
+			},
+			isHTTPS:       true,
+			expectedScore: 25,
+			expectedGrade: "D-",
+			explanation:   "100 - 25 (csp missing) - 20 (hsts missing) - 5 (xcto missing) - 20 (xfo missing) - 5 (sri missing) = 25",
+		},
+		{
+			name: "External scripts with SRI (GET request)",
+			result: &Result{
+				Score:          100,
+				EffectiveURL:   "https://example.com",
+				PresentHeaders: []HeaderInfo{},
+			},
+			isHTTPS:       true,
+			expectedScore: 30,
+			expectedGrade: "D",
+			explanation:   "100 - 25 (csp missing) - 20 (hsts missing) - 5 (xcto missing) - 20 (xfo missing) = 30. SRI bonus not applied (score < 90)",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			applyObservatoryScoring(tt.result, tt.isHTTPS)
+			// Determine htmlContent based on test case
+			var htmlContent string
+			if strings.Contains(tt.name, "External scripts without SRI") {
+				// HTML with external script without integrity
+				htmlContent = `<html><head>
+					<script src="https://cdn.example.com/script.js"></script>
+				</head></html>`
+			} else if strings.Contains(tt.name, "External scripts with SRI") {
+				// HTML with external script with integrity
+				htmlContent = `<html><head>
+					<script src="https://cdn.example.com/script.js" integrity="sha384-abc123"></script>
+				</head></html>`
+			}
+
+			applyObservatoryScoring(tt.result, tt.isHTTPS, htmlContent)
 			tt.result.Grade = scoreToGrade(tt.result.Score)
 
 			if tt.result.Score != tt.expectedScore {
@@ -383,5 +422,175 @@ func TestScoringIntegrationPoorSecurity(t *testing.T) {
 	if result.Grade == "A+" || result.Grade == "A" ||
 		result.Grade == "B+" {
 		t.Errorf("Expected low grade for poor security, got %s", result.Grade)
+	}
+}
+
+// TestAnalyzeScriptTags tests the SRI script tag analysis
+func TestAnalyzeScriptTags(t *testing.T) {
+	tests := []struct {
+		name             string
+		htmlContent      string
+		baseURL          string
+		expectedExternal int
+		expectedWithSRI  int
+	}{
+		{
+			name:             "No scripts",
+			htmlContent:      "<html><body>Hello</body></html>",
+			baseURL:          "https://example.com",
+			expectedExternal: 0,
+			expectedWithSRI:  0,
+		},
+		{
+			name: "One external script without SRI",
+			htmlContent: `<html><head>
+				<script src="https://cdn.example.com/script.js"></script>
+			</head></html>`,
+			baseURL:          "https://example.com",
+			expectedExternal: 1,
+			expectedWithSRI:  0,
+		},
+		{
+			name: "One external script with SRI",
+			htmlContent: `<html><head>
+				<script src="https://cdn.example.com/script.js" integrity="sha384-abc123"></script>
+			</head></html>`,
+			baseURL:          "https://example.com",
+			expectedExternal: 1,
+			expectedWithSRI:  1,
+		},
+		{
+			name: "Multiple external scripts mixed SRI",
+			htmlContent: `<html><head>
+				<script src="https://cdn1.example.com/script1.js" integrity="sha384-abc"></script>
+				<script src="https://cdn2.example.com/script2.js"></script>
+				<script src="https://cdn3.example.com/script3.js" integrity="sha256-xyz"></script>
+			</head></html>`,
+			baseURL:          "https://example.com",
+			expectedExternal: 3,
+			expectedWithSRI:  2,
+		},
+		{
+			name: "Relative path scripts (not external)",
+			htmlContent: `<html><head>
+				<script src="/js/local.js"></script>
+				<script src="script.js"></script>
+			</head></html>`,
+			baseURL:          "https://example.com",
+			expectedExternal: 0,
+			expectedWithSRI:  0,
+		},
+		{
+			name: "Same domain script (not external)",
+			htmlContent: `<html><head>
+				<script src="https://example.com/script.js"></script>
+			</head></html>`,
+			baseURL:          "https://example.com",
+			expectedExternal: 0,
+			expectedWithSRI:  0,
+		},
+		{
+			name: "Data URI script (not external)",
+			htmlContent: `<html><head>
+				<script src="data:text/javascript,alert('hi')"></script>
+			</head></html>`,
+			baseURL:          "https://example.com",
+			expectedExternal: 0,
+			expectedWithSRI:  0,
+		},
+		{
+			name: "Protocol-relative URL",
+			htmlContent: `<html><head>
+				<script src="//cdn.example.com/script.js" integrity="sha384-test"></script>
+			</head></html>`,
+			baseURL:          "https://example.com",
+			expectedExternal: 1,
+			expectedWithSRI:  1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			external, withSRI := analyzeScriptTags(tt.htmlContent, tt.baseURL)
+			if external != tt.expectedExternal {
+				t.Errorf(
+					"analyzeScriptTags() external = %d, want %d",
+					external,
+					tt.expectedExternal,
+				)
+			}
+			if withSRI != tt.expectedWithSRI {
+				t.Errorf("analyzeScriptTags() withSRI = %d, want %d", withSRI, tt.expectedWithSRI)
+			}
+		})
+	}
+}
+
+// TestIsExternalScript tests the external script detection
+func TestIsExternalScript(t *testing.T) {
+	tests := []struct {
+		name     string
+		src      string
+		baseURL  string
+		expected bool
+	}{
+		{
+			name:     "Different domain",
+			src:      "https://cdn.example.com/script.js",
+			baseURL:  "https://example.com",
+			expected: true,
+		},
+		{
+			name:     "Same domain",
+			src:      "https://example.com/script.js",
+			baseURL:  "https://example.com",
+			expected: false,
+		},
+		{
+			name:     "Relative path",
+			src:      "/js/script.js",
+			baseURL:  "https://example.com",
+			expected: false,
+		},
+		{
+			name:     "Relative path without slash",
+			src:      "script.js",
+			baseURL:  "https://example.com",
+			expected: false,
+		},
+		{
+			name:     "Data URI",
+			src:      "data:text/javascript,alert('hi')",
+			baseURL:  "https://example.com",
+			expected: false,
+		},
+		{
+			name:     "Protocol-relative different domain",
+			src:      "//cdn.example.com/script.js",
+			baseURL:  "https://example.com",
+			expected: true,
+		},
+		{
+			name:     "Protocol-relative same domain",
+			src:      "//example.com/script.js",
+			baseURL:  "https://example.com",
+			expected: false,
+		},
+		{
+			name:     "Different subdomain",
+			src:      "https://cdn.example.com/script.js",
+			baseURL:  "https://www.example.com",
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isExternalScript(tt.src, tt.baseURL)
+			if result != tt.expected {
+				t.Errorf("isExternalScript(%q, %q) = %v, want %v",
+					tt.src, tt.baseURL, result, tt.expected)
+			}
+		})
 	}
 }

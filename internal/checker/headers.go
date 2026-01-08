@@ -70,6 +70,13 @@ type RedirectionInfo struct {
 	Issues    []string `json:"issues,omitempty"`
 }
 
+// ScoreRule represents a scoring rule that was applied
+type ScoreRule struct {
+	Description string `json:"description"`
+	Modifier    int    `json:"modifier"` // positive for bonus, negative for penalty
+	Applied     bool   `json:"applied"`  // whether it was actually applied (for bonuses that require score >= 90)
+}
+
 // CSP directives that should be restricted
 var CSPUnsafeValues = []string{
 	"'unsafe-inline'",
