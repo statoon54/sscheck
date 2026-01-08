@@ -6,11 +6,15 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync/atomic"
 
 	"sscheck/internal/checker"
 	"sscheck/internal/ui"
 	"sscheck/internal/version"
 
+	"github.com/chelnak/ysmrr"
+	"github.com/chelnak/ysmrr/pkg/animations"
+	"github.com/chelnak/ysmrr/pkg/colors"
 	"github.com/gookit/color"
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/spf13/cobra"
@@ -187,7 +191,14 @@ func parseCustomHeaders(headers []string) map[string]string {
 // Run the checker in CLI mode
 func runCLI(targets []string, opts *checker.Options) {
 	c := checker.New(opts)
-	results := c.CheckAll(targets)
+
+	// Start spinner for non-JSON output
+	var results []*checker.Result
+	if opts.JSONOutput {
+		results = c.CheckAll(targets)
+	} else {
+		results = runWithSpinner(c, targets)
+	}
 
 	if opts.JSONOutput {
 		output, err := json.MarshalIndent(results, "", "  ")
@@ -199,7 +210,7 @@ func runCLI(targets []string, opts *checker.Options) {
 	} else {
 		// Print detailed results
 		for _, result := range results {
-			printResult(result, opts)
+			printResult(result, opts, noSummary)
 		}
 
 		// Print score summary table if multiple targets
@@ -207,6 +218,51 @@ func runCLI(targets []string, opts *checker.Options) {
 			printScoreSummary(results)
 		}
 	}
+}
+
+// runWithSpinner runs the check with a spinner animation using ysmrr
+func runWithSpinner(c *checker.Checker, targets []string) []*checker.Result {
+	// Create spinner manager
+	sm := ysmrr.NewSpinnerManager(
+		ysmrr.WithAnimation(animations.Dots),
+		ysmrr.WithSpinnerColor(colors.FgHiBlue),
+	)
+
+	var successCount, errorCount atomic.Int32
+
+	// Single progress spinner
+	progressSpinner := sm.AddSpinner(fmt.Sprintf("Checking 0/%d targets...", len(targets)))
+	sm.Start()
+
+	results := c.CheckAllWithProgress(targets, func(completed, total int, result *checker.Result) {
+		if result.Error != "" {
+			errorCount.Add(1)
+		} else {
+			successCount.Add(1)
+		}
+
+		progressSpinner.UpdateMessage(
+			fmt.Sprintf(
+				"Checking %d/%d targets... (✓ %d | ✗ %d)",
+				completed,
+				total,
+				successCount.Load(),
+				errorCount.Load(),
+			),
+		)
+	})
+
+	progressSpinner.CompleteWithMessage(
+		fmt.Sprintf(
+			"Completed %d targets (✓ %d | ✗ %d)",
+			len(targets),
+			successCount.Load(),
+			errorCount.Load(),
+		),
+	)
+	sm.Stop()
+
+	return results
 }
 
 // Print score summary table
@@ -338,7 +394,7 @@ func printScoreSummary(results []*checker.Result) {
 }
 
 // Print result in human-readable format
-func printResult(result *checker.Result, opts *checker.Options) {
+func printResult(result *checker.Result, opts *checker.Options, noSummary bool) {
 	fmt.Println()
 	fmt.Println("=======================================================")
 	fmt.Printf(" > sscheck - Security Headers Check\n")
@@ -483,8 +539,8 @@ func printResult(result *checker.Result, opts *checker.Options) {
 		getGradeColor(result.Grade).Sprint(result.Grade))
 	fmt.Println()
 
-	// Print applied scoring rules
-	if len(result.ScoreRules) > 0 {
+	// Print applied scoring rules (unless noSummary is set)
+	if !noSummary && len(result.ScoreRules) > 0 {
 		fmt.Println()
 		color.Cyan.Println(" 📋 APPLIED SCORING RULES")
 		fmt.Println()

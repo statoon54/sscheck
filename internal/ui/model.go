@@ -46,7 +46,10 @@ var (
 // Messages
 type checkStartMsg struct{}
 type checkProgressMsg struct {
-	current int
+	completed int
+	total     int
+	target    string
+	success   bool
 }
 type checkCompleteMsg struct {
 	results []*checker.Result
@@ -61,7 +64,10 @@ type Model struct {
 	spinner      spinner.Model
 	opts         *checker.Options
 	progress     progress.Model
-	current      int
+	completed    int
+	total        int
+	lastTarget   string
+	lastSuccess  bool
 	width        int
 	height       int
 	selected     int
@@ -72,6 +78,7 @@ type Model struct {
 	collapsed    bool // collapse details in Details tab
 	activeTab    int  // 0 = Details, 1 = Score Summary, 2 = Rules
 	tableCreated bool
+	progressChan chan checkProgressMsg
 }
 
 // NewModel creates a new TUI model
@@ -83,10 +90,12 @@ func NewModel(targets []string, opts *checker.Options) *Model {
 	p := progress.New(progress.WithDefaultGradient())
 
 	return &Model{
-		targets:  targets,
-		opts:     opts,
-		spinner:  s,
-		progress: p,
+		targets:      targets,
+		opts:         opts,
+		spinner:      s,
+		progress:     p,
+		total:        len(targets),
+		progressChan: make(chan checkProgressMsg, len(targets)),
 	}
 }
 
@@ -155,12 +164,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case checkStartMsg:
 		m.checking = true
-		cmd := m.runCheck()
-		return m, cmd
+		return m, tea.Batch(m.runCheck(), m.waitForProgress())
 
 	case checkProgressMsg:
-		m.current = msg.current
-		cmds = append(cmds, m.spinner.Tick)
+		m.completed = msg.completed
+		m.total = msg.total
+		m.lastTarget = msg.target
+		m.lastSuccess = msg.success
+		cmds = append(cmds, m.spinner.Tick, m.waitForProgress())
 
 	case checkCompleteMsg:
 		m.checking = false
@@ -195,8 +206,31 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *Model) runCheck() tea.Cmd {
 	return func() tea.Msg {
 		c := checker.New(m.opts)
-		results := c.CheckAll(m.targets)
+		results := c.CheckAllWithProgress(
+			m.targets,
+			func(completed, total int, result *checker.Result) {
+				success := result.Error == ""
+				m.progressChan <- checkProgressMsg{
+					completed: completed,
+					total:     total,
+					target:    result.Target,
+					success:   success,
+				}
+			},
+		)
+		close(m.progressChan)
 		return checkCompleteMsg{results: results}
+	}
+}
+
+// waitForProgress returns a command that waits for progress updates
+func (m *Model) waitForProgress() tea.Cmd {
+	return func() tea.Msg {
+		msg, ok := <-m.progressChan
+		if !ok {
+			return nil
+		}
+		return msg
 	}
 }
 
@@ -248,9 +282,27 @@ func (m *Model) View() string {
 
 	if m.checking {
 		// Show progress
-		fmt.Fprintf(&b, "%s Checking %d target(s)...\n\n", m.spinner.View(), len(m.targets))
-		percent := float64(m.current) / float64(len(m.targets))
-		b.WriteString(m.progress.ViewAs(percent) + "\n")
+		fmt.Fprintf(&b, "%s Checking targets...\n\n", m.spinner.View())
+
+		// Progress bar
+		percent := float64(m.completed) / float64(m.total)
+		b.WriteString(m.progress.ViewAs(percent) + "\n\n")
+
+		// Progress count
+		fmt.Fprintf(&b, "Progress: %d/%d completed\n", m.completed, m.total)
+
+		// Last completed target
+		if m.lastTarget != "" {
+			icon := successStyle.Render("✓")
+			if !m.lastSuccess {
+				icon = errorStyle.Render("✗")
+			}
+			lastTarget := m.lastTarget
+			if len(lastTarget) > 50 {
+				lastTarget = lastTarget[:47] + "..."
+			}
+			fmt.Fprintf(&b, "Last: %s %s\n", icon, dimStyle.Render(lastTarget))
+		}
 	} else if m.done {
 		// Show tabs if more than one tab available
 		if m.getNumTabs() > 1 {

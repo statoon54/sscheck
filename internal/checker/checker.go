@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -116,8 +117,17 @@ func New(opts *Options) *Checker {
 
 // CheckAll checks multiple targets concurrently
 func (c *Checker) CheckAll(targets []string) []*Result {
+	return c.CheckAllWithProgress(targets, nil)
+}
+
+// ProgressCallback is called when a check completes
+type ProgressCallback func(completed int, total int, result *Result)
+
+// CheckAllWithProgress checks multiple targets concurrently with progress callback
+func (c *Checker) CheckAllWithProgress(targets []string, onProgress ProgressCallback) []*Result {
 	results := make([]*Result, len(targets))
 	var wg sync.WaitGroup
+	var completedCount atomic.Int32
 
 	// Set concurrency limit (acts as semaphore)
 	workers := c.opts.Workers
@@ -135,7 +145,14 @@ func (c *Checker) CheckAll(targets []string) []*Result {
 		wg.Go(func() {
 			sem <- struct{}{} // Acquire semaphore
 			defer func() { <-sem }()
-			results[i] = c.Check(target)
+			result := c.Check(target)
+			results[i] = result
+
+			// Call progress callback if provided
+			if onProgress != nil {
+				currentCompleted := int(completedCount.Add(1))
+				onProgress(currentCompleted, len(targets), result)
+			}
 		})
 	}
 

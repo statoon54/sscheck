@@ -77,7 +77,7 @@ func createScoreRule(rule string, applied bool) ScoreRule {
 		description = "CSP missing"
 		modifier = observatoryRules.CSPMissing
 	case "csp-unsafe-inline":
-		description = "CSP unsafe-inline"
+		description = "CSP implemented unsafely"
 		modifier = observatoryRules.CSPUnsafeInline
 	case "csp-unsafe-eval":
 		description = "CSP unsafe-eval"
@@ -171,16 +171,37 @@ func applyObservatoryScoring(result *Result, isHTTPS bool, htmlContent string) {
 		result.Score += rule.Modifier
 	} else {
 		// CSP is present, check for unsafe directives in issues
+		// Mozilla Observatory applies -20 for:
+		// 1. unsafe-inline in script-src
+		// 2. data: in script-src
+		// 3. overly broad sources (https:, http:, *) in script-src or object-src
+		// 4. missing script-src or object-src (no default-src fallback)
+		hasUnsafeImplementation := false
+		hasUnsafeEval := false
+
 		for _, issue := range cspHeader.Issues {
-			if strings.Contains(issue, "unsafe-inline") && strings.Contains(issue, "script-src") {
-				rule := createScoreRule("csp-unsafe-inline", true)
-				result.ScoreRules = append(result.ScoreRules, rule)
-				result.Score += rule.Modifier
+			issueLower := strings.ToLower(issue)
+
+			// Check for unsafe implementation (-20)
+			if !hasUnsafeImplementation {
+				if (strings.Contains(issueLower, "unsafe-inline") && strings.Contains(issueLower, "script-src")) ||
+					(strings.Contains(issueLower, "data:") && strings.Contains(issueLower, "script-src")) ||
+					(strings.Contains(issueLower, "overly broad") && (strings.Contains(issueLower, "script-src") || strings.Contains(issueLower, "object-src"))) ||
+					strings.Contains(issueLower, "missing script-src") ||
+					strings.Contains(issueLower, "missing object-src") {
+					rule := createScoreRule("csp-unsafe-inline", true)
+					result.ScoreRules = append(result.ScoreRules, rule)
+					result.Score += rule.Modifier
+					hasUnsafeImplementation = true
+				}
 			}
-			if strings.Contains(issue, "unsafe-eval") {
+
+			// Check for unsafe-eval (-10)
+			if !hasUnsafeEval && strings.Contains(issueLower, "unsafe-eval") {
 				rule := createScoreRule("csp-unsafe-eval", true)
 				result.ScoreRules = append(result.ScoreRules, rule)
 				result.Score += rule.Modifier
+				hasUnsafeEval = true
 			}
 		}
 	}
