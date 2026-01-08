@@ -130,7 +130,49 @@ sscheck --cors -m GET https://api.example.com
 
 # Full security analysis
 sscheck --cookies --cors -m GET -I -x -k https://example.com
+
+# Disable score summary table
+sscheck --no-summary github.com google.com microsoft.com
 ```
+
+### Important Notes
+
+#### HTTP Method: HEAD vs GET
+
+By default, sscheck uses the **HEAD** method for performance (no body download). However, some sites like **Google.com** send different headers with HEAD vs GET:
+
+```bash
+# HEAD method (default) - Google doesn't send HSTS
+./sscheck google.com
+# Score: 50 (missing HSTS: -20)
+
+# GET method - Google sends HSTS
+./sscheck google.com -m GET
+# Score: 65 (HSTS present)
+```
+
+**Recommendation:** Use `-m GET` for the most accurate analysis, especially when comparing with Mozilla Observatory scores.
+
+#### Subresource Integrity (SRI) Scoring
+
+**SRI analysis is only performed with GET requests** that return HTML content. HEAD requests cannot assess SRI as they don't return the page body.
+
+```bash
+# HEAD method - SRI not analyzed
+./sscheck microsoft.com
+# Score: 30 (SRI scoring skipped)
+
+# GET method - SRI analyzed
+./sscheck microsoft.com -m GET
+# Score: 25 (SRI missing: -5)
+```
+
+SRI scoring checks if external scripts (from different domains) have the `integrity` attribute. Mozilla Observatory applies:
+
+- **-5 points**: External scripts without SRI
+- **+5 points**: All external scripts have SRI
+
+**Note:** HEAD requests are faster but skip SRI analysis. Use GET for complete security assessment.
 
 ## Interactive Mode
 
@@ -184,20 +226,20 @@ Each target receives a **score (0-145+)** and a **grade (A+ to F)** based on sec
 #### Grade Scale
 
 | Grade | Score Range |
-|-------|-------------|
+| ------- | ------------- |
 | **A+** | 100+ |
-| **A**  | 90-99 |
+| **A** | 90-99 |
 | **A-** | 85-89 |
 | **B+** | 80-84 |
-| **B**  | 70-79 |
+| **B** | 70-79 |
 | **B-** | 65-69 |
 | **C+** | 60-64 |
-| **C**  | 50-59 |
+| **C** | 50-59 |
 | **C-** | 45-49 |
 | **D+** | 40-44 |
-| **D**  | 30-39 |
+| **D** | 30-39 |
 | **D-** | 25-29 |
-| **F**  | 0-24 |
+| **F** | 0-24 |
 
 #### Example Output
 

@@ -55,20 +55,23 @@ type checkErrorMsg struct{}
 
 // Model is the bubbletea model for the TUI
 type Model struct {
-	targets  []string
-	results  []*checker.Result
-	viewport viewport.Model
-	spinner  spinner.Model
-	opts     *checker.Options
-	progress progress.Model
-	current  int
-	width    int
-	height   int
-	selected int
-	ready    bool
-	checking bool
-	done     bool
-	showAll  bool
+	targets      []string
+	results      []*checker.Result
+	viewport     viewport.Model
+	spinner      spinner.Model
+	opts         *checker.Options
+	progress     progress.Model
+	current      int
+	width        int
+	height       int
+	selected     int
+	ready        bool
+	checking     bool
+	done         bool
+	showAll      bool
+	collapsed    bool // collapse details in Details tab
+	activeTab    int  // 0 = Details, 1 = Score Summary, 2 = Rules
+	tableCreated bool
 }
 
 // NewModel creates a new TUI model
@@ -108,19 +111,30 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c", "esc":
 			return m, tea.Quit
+		case "tab":
+			if m.done {
+				numTabs := m.getNumTabs()
+				m.activeTab = (m.activeTab + 1) % numTabs
+				m.updateViewportContent()
+			}
 		case "up", "k":
-			if m.done && m.selected > 0 {
+			if m.done && m.activeTab == 0 && m.selected > 0 {
 				m.selected--
 				m.viewport.SetContent(m.renderResults())
 			}
 		case "down", "j":
-			if m.done && m.selected < len(m.results)-1 {
+			if m.done && m.activeTab == 0 && m.selected < len(m.results)-1 {
 				m.selected++
 				m.viewport.SetContent(m.renderResults())
 			}
 		case "a":
-			if m.done {
+			if m.done && m.activeTab == 0 {
 				m.showAll = !m.showAll
+				m.viewport.SetContent(m.renderResults())
+			}
+		case "c":
+			if m.done && m.activeTab == 0 {
+				m.collapsed = !m.collapsed
 				m.viewport.SetContent(m.renderResults())
 			}
 		case "enter":
@@ -152,7 +166,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.checking = false
 		m.done = true
 		m.results = msg.results
-		m.viewport.SetContent(m.renderResults())
+		m.updateViewportContent()
 
 	case checkErrorMsg:
 		m.checking = false
@@ -186,6 +200,45 @@ func (m *Model) runCheck() tea.Cmd {
 	}
 }
 
+// getNumTabs returns the number of tabs based on results
+func (m *Model) getNumTabs() int {
+	if len(m.results) > 1 {
+		return 3 // Details, Scores, Rules
+	}
+	// Single result: Details and Rules (if rules exist)
+	if m.hasAnyRules() {
+		return 2 // Details, Rules
+	}
+	return 1 // Details only
+}
+
+// hasAnyRules checks if any result has scoring rules
+func (m *Model) hasAnyRules() bool {
+	for _, r := range m.results {
+		if r.Error == "" && len(r.ScoreRules) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// updateViewportContent updates the viewport based on active tab
+func (m *Model) updateViewportContent() {
+	switch m.activeTab {
+	case 0:
+		m.viewport.SetContent(m.renderResults())
+	case 1:
+		if len(m.results) > 1 {
+			m.tableCreated = false
+			m.viewport.SetContent(m.renderScoreSummary())
+		} else {
+			m.viewport.SetContent(m.renderRulesSummary())
+		}
+	case 2:
+		m.viewport.SetContent(m.renderRulesSummary())
+	}
+}
+
 func (m *Model) View() string {
 	var b strings.Builder
 
@@ -199,8 +252,18 @@ func (m *Model) View() string {
 		percent := float64(m.current) / float64(len(m.targets))
 		b.WriteString(m.progress.ViewAs(percent) + "\n")
 	} else if m.done {
-		// Show results
-		b.WriteString(m.renderResultsSummary())
+		// Show tabs if more than one tab available
+		if m.getNumTabs() > 1 {
+			b.WriteString(m.renderTabs())
+			b.WriteString("\n")
+		}
+
+		// Show results summary only on Details tab
+		if m.activeTab == 0 {
+			b.WriteString(m.renderResultsSummary())
+		} else {
+			b.WriteString("\n")
+		}
 		b.WriteString("\n")
 
 		if m.ready {
@@ -208,10 +271,64 @@ func (m *Model) View() string {
 		}
 
 		b.WriteString("\n")
-		b.WriteString(dimStyle.Render("↑/↓: navigate • a: toggle all headers • q: quit"))
+		if m.getNumTabs() > 1 {
+			b.WriteString(dimStyle.Render("↑/↓: navigate • tab: switch view • a: toggle all • c: collapse • q: quit"))
+		} else {
+			b.WriteString(dimStyle.Render("↑/↓: navigate • a: toggle all • c: collapse • q: quit"))
+		}
 	}
 
 	return b.String()
+}
+
+func (m *Model) renderTabs() string {
+	var tabs []string
+
+	// Active tab style with gradient
+	activeTabBorder := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("205")).
+		Bold(true).
+		Foreground(lipgloss.AdaptiveColor{
+			Light: "#FF00FF",
+			Dark:  "#FF00FF",
+		}).
+		Background(lipgloss.AdaptiveColor{
+			Light: "#1a1a2e",
+			Dark:  "#1a1a2e",
+		}).
+		Padding(0, 2)
+
+	// Inactive tab style
+	inactiveTabStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		Foreground(lipgloss.Color("240")).
+		Padding(0, 2)
+
+	renderTab := func(label string, isActive bool) string {
+		if isActive {
+			return activeTabBorder.Render(label)
+		}
+		return inactiveTabStyle.Render(label)
+	}
+
+	if len(m.results) > 1 {
+		// Multiple results: Details, Scores, Rules
+		tabs = append(tabs,
+			renderTab("📋 Details", m.activeTab == 0),
+			renderTab("📊 Scores", m.activeTab == 1),
+			renderTab("📜 Rules", m.activeTab == 2),
+		)
+	} else {
+		// Single result: Details, Rules
+		tabs = append(tabs,
+			renderTab("📋 Details", m.activeTab == 0),
+			renderTab("📜 Rules", m.activeTab == 1),
+		)
+	}
+
+	return lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
 }
 
 func (m *Model) renderResultsSummary() string {
@@ -240,8 +357,216 @@ func (m *Model) renderResultsSummary() string {
 	return b.String()
 }
 
+func (m *Model) renderScoreSummary() string {
+	var b strings.Builder
+
+	if len(m.results) == 0 {
+		return "No results to display."
+	}
+
+	// Title
+	b.WriteString(headerStyle.Render("📊 Observatory Score Summary"))
+	b.WriteString("\n\n")
+
+	// Styles pour le tableau
+	headerLineStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("39"))
+
+	cellStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("252"))
+
+	borderStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("240"))
+
+	// Largeurs des colonnes
+	const siteWidth = 40
+	const scoreWidth = 10
+	const gradeWidth = 10
+
+	// En-têtes
+	siteHeader := headerLineStyle.Render(
+		lipgloss.PlaceHorizontal(siteWidth, lipgloss.Center, "Site"),
+	)
+	scoreHeader := headerLineStyle.Render(
+		lipgloss.PlaceHorizontal(scoreWidth, lipgloss.Center, "Score"),
+	)
+	gradeHeader := headerLineStyle.Render(
+		lipgloss.PlaceHorizontal(gradeWidth, lipgloss.Center, "Grade"),
+	)
+
+	b.WriteString(siteHeader + "  " + scoreHeader + "  " + gradeHeader + "\n")
+
+	// Ligne de séparation
+	separator := borderStyle.Render(strings.Repeat("─", siteWidth) + "  " +
+		strings.Repeat("─", scoreWidth) + "  " +
+		strings.Repeat("─", gradeWidth))
+	b.WriteString(separator + "\n")
+
+	// Lignes de données
+	totalScore := 0
+	validCount := 0
+	minScore := 999
+	maxScore := -1
+
+	for _, r := range m.results {
+		if r.Error != "" {
+			site := cellStyle.Render(
+				lipgloss.PlaceHorizontal(siteWidth, lipgloss.Left, truncate(r.Target, siteWidth-2)),
+			)
+			errorText := errorStyle.Render(
+				lipgloss.PlaceHorizontal(scoreWidth, lipgloss.Center, "ERROR"),
+			)
+			dash := cellStyle.Render(lipgloss.PlaceHorizontal(gradeWidth, lipgloss.Center, "-"))
+			b.WriteString(site + "  " + errorText + "  " + dash + "\n")
+		} else {
+			// Calculer les stats
+			totalScore += r.Score
+			validCount++
+			if r.Score < minScore {
+				minScore = r.Score
+			}
+			if r.Score > maxScore {
+				maxScore = r.Score
+			}
+
+			// Afficher la ligne
+			site := cellStyle.Render(lipgloss.PlaceHorizontal(siteWidth, lipgloss.Left, truncate(r.Target, siteWidth-2)))
+
+			scoreColor := getScoreColor(r.Score)
+			scoreText := lipgloss.NewStyle().
+				Foreground(scoreColor).
+				Bold(true).
+				Render(lipgloss.PlaceHorizontal(scoreWidth, lipgloss.Center, fmt.Sprintf("%d", r.Score)))
+
+			gradeText := lipgloss.NewStyle().
+				Foreground(scoreColor).
+				Bold(true).
+				Render(lipgloss.PlaceHorizontal(gradeWidth, lipgloss.Center, r.Grade))
+
+			b.WriteString(site + "  " + scoreText + "  " + gradeText + "\n")
+		}
+	}
+
+	// Statistiques
+	if validCount > 0 {
+		avgScore := totalScore / validCount
+		b.WriteString("\n")
+		b.WriteString(fmt.Sprintf(
+			"Average: %s  |  Min: %d  |  Max: %d\n",
+			scoreStyle.
+				Foreground(getScoreColor(avgScore)).
+				Render(fmt.Sprintf("%d", avgScore)),
+			minScore,
+			maxScore,
+		))
+	}
+
+	return b.String()
+}
+
+func (m *Model) renderRulesSummary() string {
+	var b strings.Builder
+
+	if len(m.results) == 0 {
+		return "No results to display."
+	}
+
+	// Title
+	b.WriteString(headerStyle.Render("📜 Applied Scoring Rules"))
+	b.WriteString("\n\n")
+
+	hasAnyRules := false
+	for _, r := range m.results {
+		if r.Error == "" && len(r.ScoreRules) > 0 {
+			hasAnyRules = true
+			break
+		}
+	}
+
+	if !hasAnyRules {
+		b.WriteString(dimStyle.Render("No scoring rules applied."))
+		return b.String()
+	}
+
+	for _, r := range m.results {
+		if r.Error != "" || len(r.ScoreRules) == 0 {
+			continue
+		}
+
+		site := r.Target
+		if len(site) > 60 {
+			site = site[:57] + "..."
+		}
+		b.WriteString(headerStyle.Render(fmt.Sprintf("%s (Score: %d)", site, r.Score)))
+		b.WriteString("\n")
+
+		penalties := []checker.ScoreRule{}
+		bonuses := []checker.ScoreRule{}
+		bonusesNotApplied := []checker.ScoreRule{}
+
+		for _, rule := range r.ScoreRules {
+			if rule.Modifier < 0 {
+				penalties = append(penalties, rule)
+			} else if rule.Applied {
+				bonuses = append(bonuses, rule)
+			} else {
+				bonusesNotApplied = append(bonusesNotApplied, rule)
+			}
+		}
+
+		if len(penalties) > 0 {
+			b.WriteString(errorStyle.Render("  Penalties:"))
+			b.WriteString("\n")
+			for _, rule := range penalties {
+				b.WriteString(
+					dimStyle.Render(
+						fmt.Sprintf("    • %s: %d", rule.Description, rule.Modifier),
+					),
+				)
+				b.WriteString("\n")
+			}
+		}
+
+		if len(bonuses) > 0 {
+			b.WriteString(successStyle.Render("  Bonuses:"))
+			b.WriteString("\n")
+			for _, rule := range bonuses {
+				b.WriteString(
+					dimStyle.Render(
+						fmt.Sprintf("    • %s: +%d", rule.Description, rule.Modifier),
+					),
+				)
+				b.WriteString("\n")
+			}
+		}
+
+		if len(bonusesNotApplied) > 0 {
+			b.WriteString(warningStyle.Render("  Bonuses not applied (score < 90):"))
+			b.WriteString("\n")
+			for _, rule := range bonusesNotApplied {
+				b.WriteString(
+					dimStyle.Render(
+						fmt.Sprintf("    • %s: +%d", rule.Description, rule.Modifier),
+					),
+				)
+				b.WriteString("\n")
+			}
+		}
+
+		b.WriteString("\n")
+	}
+
+	return b.String()
+}
+
 func (m *Model) renderResults() string {
 	var b strings.Builder
+
+	// Collapsed mode: show compact table view
+	if m.collapsed {
+		return m.renderCollapsedResults()
+	}
 
 	for i, result := range m.results {
 		selected := i == m.selected
@@ -402,6 +727,115 @@ func (m *Model) renderResults() string {
 
 		b.WriteString("\n")
 	}
+
+	return b.String()
+}
+
+// renderCollapsedResults renders a compact table view of all results
+func (m *Model) renderCollapsedResults() string {
+	var b strings.Builder
+
+	// Title
+	b.WriteString(headerStyle.Render("📋 Sites Overview (collapsed)"))
+	b.WriteString("\n\n")
+
+	// Table header styles
+	headerLineStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("39"))
+
+	cellStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("252"))
+
+	borderStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("240"))
+
+	// Column widths
+	const siteWidth = 40
+	const statusWidth = 8
+	const safeWidth = 8
+	const unsafeWidth = 8
+	const scoreWidth = 8
+	const gradeWidth = 8
+
+	// Headers
+	siteHeader := headerLineStyle.Render(lipgloss.PlaceHorizontal(siteWidth, lipgloss.Left, "Site"))
+	statusHeader := headerLineStyle.Render(
+		lipgloss.PlaceHorizontal(statusWidth, lipgloss.Center, "Status"),
+	)
+	safeHeader := headerLineStyle.Render(lipgloss.PlaceHorizontal(safeWidth, lipgloss.Center, "✓"))
+	unsafeHeader := headerLineStyle.Render(
+		lipgloss.PlaceHorizontal(unsafeWidth, lipgloss.Center, "✗"),
+	)
+	scoreHeader := headerLineStyle.Render(
+		lipgloss.PlaceHorizontal(scoreWidth, lipgloss.Center, "Score"),
+	)
+	gradeHeader := headerLineStyle.Render(
+		lipgloss.PlaceHorizontal(gradeWidth, lipgloss.Center, "Grade"),
+	)
+
+	b.WriteString(
+		siteHeader + " " + statusHeader + " " + safeHeader + " " + unsafeHeader + " " + scoreHeader + " " + gradeHeader + "\n",
+	)
+
+	// Separator
+	separator := borderStyle.Render(
+		strings.Repeat("─", siteWidth) + " " +
+			strings.Repeat("─", statusWidth) + " " +
+			strings.Repeat("─", safeWidth) + " " +
+			strings.Repeat("─", unsafeWidth) + " " +
+			strings.Repeat("─", scoreWidth) + " " +
+			strings.Repeat("─", gradeWidth))
+	b.WriteString(separator + "\n")
+
+	// Data rows
+	for i, r := range m.results {
+		prefix := "  "
+		if i == m.selected {
+			prefix = "▶ "
+		}
+
+		if r.Error != "" {
+			site := cellStyle.Render(
+				lipgloss.PlaceHorizontal(
+					siteWidth,
+					lipgloss.Left,
+					prefix+truncate(r.Target, siteWidth-4),
+				),
+			)
+			errorText := errorStyle.Render(
+				lipgloss.PlaceHorizontal(statusWidth, lipgloss.Center, "ERROR"),
+			)
+			dash := cellStyle.Render(lipgloss.PlaceHorizontal(safeWidth, lipgloss.Center, "-"))
+			b.WriteString(
+				site + " " + errorText + " " + dash + " " + dash + " " + dash + " " + dash + "\n",
+			)
+		} else {
+			site := cellStyle.Render(lipgloss.PlaceHorizontal(siteWidth, lipgloss.Left, prefix+truncate(r.Target, siteWidth-4)))
+
+			statusColor := successStyle
+			if r.StatusCode >= 400 {
+				statusColor = errorStyle
+			} else if r.StatusCode >= 300 {
+				statusColor = warningStyle
+			}
+			status := statusColor.Render(lipgloss.PlaceHorizontal(statusWidth, lipgloss.Center, fmt.Sprintf("%d", r.StatusCode)))
+
+			safe := successStyle.Render(lipgloss.PlaceHorizontal(safeWidth, lipgloss.Center, fmt.Sprintf("%d", r.SafeCount)))
+			unsafe := errorStyle.Render(lipgloss.PlaceHorizontal(unsafeWidth, lipgloss.Center, fmt.Sprintf("%d", r.UnsafeCount)))
+
+			scoreColor := getScoreColor(r.Score)
+			score := lipgloss.NewStyle().Foreground(scoreColor).Bold(true).
+				Render(lipgloss.PlaceHorizontal(scoreWidth, lipgloss.Center, fmt.Sprintf("%d", r.Score)))
+			grade := lipgloss.NewStyle().Foreground(scoreColor).Bold(true).
+				Render(lipgloss.PlaceHorizontal(gradeWidth, lipgloss.Center, r.Grade))
+
+			b.WriteString(site + " " + status + " " + safe + " " + unsafe + " " + score + " " + grade + "\n")
+		}
+	}
+
+	b.WriteString("\n")
+	b.WriteString(dimStyle.Render("Press 'c' to expand details"))
 
 	return b.String()
 }
