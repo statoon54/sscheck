@@ -1,4 +1,4 @@
-module sscheck
+module github.com/statoon54/sscheck
 
 go 1.25
 

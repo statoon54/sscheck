@@ -8,9 +8,9 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"sscheck/internal/checker"
-	"sscheck/internal/ui"
-	"sscheck/internal/version"
+	"github.com/statoon54/sscheck/internal/checker"
+	"github.com/statoon54/sscheck/internal/ui"
+	"github.com/statoon54/sscheck/internal/version"
 
 	"github.com/chelnak/ysmrr"
 	"github.com/chelnak/ysmrr/pkg/animations"
