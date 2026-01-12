@@ -3,7 +3,7 @@
 
 # Application name
 APP_NAME := sscheck
-MODULE := sscheck
+MODULE := github.com/statoon54/sscheck
 
 # Directories
 BUILD_DIR := bin

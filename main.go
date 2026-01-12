@@ -1,7 +1,7 @@
 package main
 
 import (
-	"sscheck/cmd"
+	"github.com/statoon54/sscheck/cmd"
 )
 
 func main() {

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"sscheck/internal/checker"
+	"github.com/statoon54/sscheck/internal/checker"
 
 	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/spinner"
