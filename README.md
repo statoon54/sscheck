@@ -1,5 +1,7 @@
 # sscheck - Security Headers Check
 
+![GitHub Release](https://img.shields.io/github/v/release/statoon54/sscheck)
+
 A Go implementation of [shcheck](https://github.com/santoru/shcheck) - a tool to analyze HTTP security headers on web servers.
 
 ## Features
