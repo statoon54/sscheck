@@ -589,8 +589,8 @@ func printResult(result *checker.Result, opts *checker.Options, noSummary bool) 
 func printCSP(csp string) {
 	unsafeOperators := []string{"unsafe-inline", "unsafe-eval", "unsafe-hashes", "wasm-unsafe-eval"}
 	fmt.Println("Value:")
-	directives := strings.Split(csp, ";")
-	for _, directive := range directives {
+	directives := strings.SplitSeq(csp, ";")
+	for directive := range directives {
 		directive = strings.TrimSpace(directive)
 		if directive == "" {
 			continue
