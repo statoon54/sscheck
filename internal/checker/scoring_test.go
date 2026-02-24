@@ -387,7 +387,7 @@ func TestScoringIntegration(t *testing.T) {
 	}
 
 	// Should have an A+ or A grade
-	if result.Grade != "A+" && result.Grade != "A" { //nolint:goconst // test comparison
+	if result.Grade != "A+" && result.Grade != "A" {
 		t.Errorf("Expected grade A+ or A for good security, got %s", result.Grade)
 	}
 }

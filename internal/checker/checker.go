@@ -19,9 +19,8 @@ import (
 )
 
 const (
-	severityWarning    = "warning"
-	severityError      = "error"
-	severityDeprecated = "deprecated"
+	severityWarning = "warning"
+	severityError   = "error"
 )
 
 // Options contains the configuration for the checker
@@ -189,10 +188,18 @@ func (c *Checker) doRequest(target, method string) (*http.Response, error) {
 		return nil, fmt.Errorf("invalid target URL: %w", err)
 	}
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return nil, fmt.Errorf("unsupported scheme %q: only http and https are allowed", parsed.Scheme)
+		return nil, fmt.Errorf(
+			"unsupported scheme %q: only http and https are allowed",
+			parsed.Scheme,
+		)
 	}
 
-	req, err := http.NewRequestWithContext(context.Background(), method, parsed.String(), http.NoBody)
+	req, err := http.NewRequestWithContext(
+		context.Background(),
+		method,
+		parsed.String(),
+		http.NoBody,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -215,7 +222,7 @@ func (c *Checker) doRequest(target, method string) (*http.Response, error) {
 		req.Header.Set(k, v)
 	}
 
-	resp, err := c.client.Do(req)
+	resp, err := c.client.Do(req) //nolint:gosec // G704: scheme validated to http/https only above
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
