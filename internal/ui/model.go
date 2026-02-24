@@ -2,15 +2,16 @@ package ui
 
 import (
 	"fmt"
+	"image/color"
 	"strings"
 
 	"github.com/statoon54/sscheck/internal/checker"
 
-	"github.com/charmbracelet/bubbles/progress"
-	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/progress"
+	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // Styles
@@ -87,7 +88,7 @@ func NewModel(targets []string, opts *checker.Options) *Model {
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 
-	p := progress.New(progress.WithDefaultGradient())
+	p := progress.New(progress.WithDefaultBlend())
 
 	return &Model{
 		targets:      targets,
@@ -116,7 +117,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "q", "ctrl+c", "esc":
 			return m, tea.Quit
@@ -153,13 +154,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.progress.Width = msg.Width - 20
+		m.progress.SetWidth(msg.Width - 20)
 		if !m.ready {
-			m.viewport = viewport.New(msg.Width-4, msg.Height-10)
+			m.viewport = viewport.New(viewport.WithWidth(msg.Width-4), viewport.WithHeight(msg.Height-10))
 			m.ready = true
 		} else {
-			m.viewport.Width = msg.Width - 4
-			m.viewport.Height = msg.Height - 10
+			m.viewport.SetWidth(msg.Width - 4)
+			m.viewport.SetHeight(msg.Height - 10)
 		}
 
 	case checkStartMsg:
@@ -188,10 +189,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 
 	case progress.FrameMsg:
-		progressModel, cmd := m.progress.Update(msg)
-		if p, ok := progressModel.(progress.Model); ok {
-			m.progress = p
-		}
+		var cmd tea.Cmd
+		m.progress, cmd = m.progress.Update(msg)
 		cmds = append(cmds, cmd)
 	}
 
@@ -273,7 +272,7 @@ func (m *Model) updateViewportContent() {
 	}
 }
 
-func (m *Model) View() string {
+func (m *Model) View() tea.View {
 	var b strings.Builder
 
 	// Title
@@ -330,7 +329,9 @@ func (m *Model) View() string {
 		}
 	}
 
-	return b.String()
+	v := tea.NewView(b.String())
+	v.AltScreen = true
+	return v
 }
 
 func (m *Model) renderTabs() string {
@@ -341,14 +342,8 @@ func (m *Model) renderTabs() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("205")).
 		Bold(true).
-		Foreground(lipgloss.AdaptiveColor{
-			Light: "#FF00FF",
-			Dark:  "#FF00FF",
-		}).
-		Background(lipgloss.AdaptiveColor{
-			Light: "#1a1a2e",
-			Dark:  "#1a1a2e",
-		}).
+		Foreground(lipgloss.Color("#FF00FF")).
+		Background(lipgloss.Color("#1a1a2e")).
 		Padding(0, 2)
 
 	// Inactive tab style
@@ -504,14 +499,14 @@ func (m *Model) renderScoreSummary() string {
 	if validCount > 0 {
 		avgScore := totalScore / validCount
 		b.WriteString("\n")
-		b.WriteString(fmt.Sprintf(
+		fmt.Fprintf(&b,
 			"Average: %s  |  Min: %d  |  Max: %d\n",
 			scoreStyle.
 				Foreground(getScoreColor(avgScore)).
 				Render(fmt.Sprintf("%d", avgScore)),
 			minScore,
 			maxScore,
-		))
+		)
 	}
 
 	return b.String()
@@ -901,7 +896,7 @@ func truncate(s string, maxLen int) string {
 }
 
 // getScoreColor returns the appropriate color for the score
-func getScoreColor(score int) lipgloss.Color {
+func getScoreColor(score int) color.Color {
 	switch {
 	case score >= 100:
 		return lipgloss.Color("42") // Green
@@ -918,7 +913,7 @@ func getScoreColor(score int) lipgloss.Color {
 
 // RunInteractive starts the interactive TUI
 func RunInteractive(targets []string, opts *checker.Options) {
-	p := tea.NewProgram(NewModel(targets, opts), tea.WithAltScreen())
+	p := tea.NewProgram(NewModel(targets, opts))
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error running TUI: %v\n", err)
 	}
