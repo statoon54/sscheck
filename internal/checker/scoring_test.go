@@ -7,6 +7,8 @@ import (
 	"testing"
 )
 
+const gradeAPlus = "A+"
+
 // TestScoreToGrade tests the score to grade conversion
 func TestScoreToGrade(t *testing.T) {
 	tests := []struct {
@@ -14,8 +16,8 @@ func TestScoreToGrade(t *testing.T) {
 		score int
 		want  string
 	}{
-		{"A+ grade max", 145, "A+"},
-		{"A+ grade min", 100, "A+"},
+		{"A+ grade max", 145, gradeAPlus},
+		{"A+ grade min", 100, gradeAPlus},
 		{"A grade", 95, "A"},
 		{"A grade min", 90, "A"},
 		{"A- grade", 85, "A-"},
@@ -120,7 +122,7 @@ func TestApplyObservatoryScoring(t *testing.T) {
 			},
 			isHTTPS:       true,
 			expectedScore: 130,
-			expectedGrade: "A+",
+			expectedGrade: gradeAPlus,
 			explanation:   "100 + 5 (cookies secure) + 5 (referrer private) + 5 (hsts preload) + 5 (xfo present) + 10 (corp same-origin) = 130",
 		},
 		{
@@ -387,7 +389,7 @@ func TestScoringIntegration(t *testing.T) {
 	}
 
 	// Should have an A+ or A grade
-	if result.Grade != "A+" && result.Grade != "A" {
+	if result.Grade != gradeAPlus && result.Grade != "A" {
 		t.Errorf("Expected grade A+ or A for good security, got %s", result.Grade)
 	}
 }
@@ -419,7 +421,7 @@ func TestScoringIntegrationPoorSecurity(t *testing.T) {
 	}
 
 	// Should have a low grade
-	if result.Grade == "A+" || result.Grade == "A" ||
+	if result.Grade == gradeAPlus || result.Grade == "A" ||
 		result.Grade == "B+" {
 		t.Errorf("Expected low grade for poor security, got %s", result.Grade)
 	}
