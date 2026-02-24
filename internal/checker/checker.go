@@ -184,7 +184,15 @@ func (c *Checker) doRequestWithFallback(target string) (*http.Response, error) {
 
 // doRequest creates and executes an HTTP request with the specified method
 func (c *Checker) doRequest(target, method string) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(context.Background(), method, target, http.NoBody)
+	parsed, err := url.Parse(target)
+	if err != nil {
+		return nil, fmt.Errorf("invalid target URL: %w", err)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return nil, fmt.Errorf("unsupported scheme %q: only http and https are allowed", parsed.Scheme)
+	}
+
+	req, err := http.NewRequestWithContext(context.Background(), method, parsed.String(), http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}

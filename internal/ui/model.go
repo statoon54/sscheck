@@ -499,14 +499,14 @@ func (m *Model) renderScoreSummary() string {
 	if validCount > 0 {
 		avgScore := totalScore / validCount
 		b.WriteString("\n")
-		b.WriteString(fmt.Sprintf(
+		fmt.Fprintf(&b,
 			"Average: %s  |  Min: %d  |  Max: %d\n",
 			scoreStyle.
 				Foreground(getScoreColor(avgScore)).
 				Render(fmt.Sprintf("%d", avgScore)),
 			minScore,
 			maxScore,
-		))
+		)
 	}
 
 	return b.String()
