@@ -18,6 +18,11 @@ import (
 	"time"
 )
 
+const (
+	severityWarning = "warning"
+	severityError   = "error"
+)
+
 // Options contains the configuration for the checker
 type Options struct {
 	CustomHeaders   map[string]string
@@ -162,7 +167,7 @@ func (c *Checker) doRequestWithFallback(target string) (*http.Response, error) {
 	}
 
 	// If HEAD returns 404 or 405, retry with GET
-	if c.opts.Method == methodHead &&
+	if c.opts.Method == "HEAD" &&
 		(resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed) {
 		defer func() {
 			err := resp.Body.Close()
@@ -170,7 +175,7 @@ func (c *Checker) doRequestWithFallback(target string) (*http.Response, error) {
 				fmt.Printf("Failed to close response body: %v\n", err)
 			}
 		}()
-		return c.doRequest(target, methodGet)
+		return c.doRequest(target, "GET")
 	}
 
 	return resp, nil
@@ -217,7 +222,7 @@ func (c *Checker) doRequest(target, method string) (*http.Response, error) {
 		req.Header.Set(k, v)
 	}
 
-	resp, err := c.client.Do(req)
+	resp, err := c.client.Do(req) //nolint:gosec // G704: scheme validated to http/https only above
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
@@ -267,9 +272,9 @@ func (c *Checker) Check(target string) *Result {
 	maps.Copy(secHeaders, SecurityHeaders)
 
 	// Check for CSP with frame-ancestors (makes X-Frame-Options unnecessary)
-	cspValue := getHeaderValue(resp.Header, headerContentSecurityPolicy)
+	cspValue := getHeaderValue(resp.Header, "Content-Security-Policy")
 	if cspValue != "" && strings.Contains(strings.ToLower(cspValue), "frame-ancestors") {
-		delete(secHeaders, headerXFrameOptions)
+		delete(secHeaders, "X-Frame-Options")
 	}
 
 	// Analyze security headers
@@ -333,12 +338,12 @@ func (c *Checker) Check(target string) *Result {
 			result.PresentHeaders = append(result.PresentHeaders, info)
 		} else {
 			// Skip HSTS check for non-HTTPS
-			if header == headerStrictTransportSecurity && !isHTTPS {
+			if header == "Strict-Transport-Security" && !isHTTPS {
 				continue
 			}
 
 			// Skip deprecated headers if not showing them
-			if severity == severityDeprecated && !c.opts.ShowDeprecated {
+			if severity == "deprecated" && !c.opts.ShowDeprecated {
 				continue
 			}
 
@@ -381,7 +386,7 @@ func (c *Checker) Check(target string) *Result {
 
 	// Analyze cookies
 	if c.opts.ShowCookies {
-		hasHSTS := getHeaderValue(resp.Header, headerStrictTransportSecurity) != ""
+		hasHSTS := getHeaderValue(resp.Header, "Strict-Transport-Security") != ""
 		result.Cookies = analyzeCookies(resp.Cookies(), isHTTPS, hasHSTS)
 	}
 
@@ -392,7 +397,7 @@ func (c *Checker) Check(target string) *Result {
 
 	// Read HTML content for SRI analysis (only for GET requests)
 	var htmlContent string
-	if c.opts.Method == methodGet {
+	if c.opts.Method == "GET" {
 		// Read the response body
 		bodyBytes, err := io.ReadAll(resp.Body)
 		if err == nil {
@@ -794,7 +799,7 @@ func isCSRFCookie(name string) bool {
 
 // analyzeCORS analyzes CORS headers for security issues
 func analyzeCORS(headers http.Header) *CORSInfo {
-	allowOrigin := getHeaderValue(headers, headerAccessControlAllowOrigin)
+	allowOrigin := getHeaderValue(headers, "Access-Control-Allow-Origin")
 	if allowOrigin == "" {
 		return nil // CORS not implemented
 	}

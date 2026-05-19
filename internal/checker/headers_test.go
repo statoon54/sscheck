@@ -7,18 +7,18 @@ import (
 func TestSecurityHeaders(t *testing.T) {
 	// Verify all expected security headers are defined
 	expectedHeaders := []string{
-		headerXXSSProtection,
-		headerXFrameOptions,
-		headerXContentTypeOptions,
-		headerStrictTransportSecurity,
-		headerContentSecurityPolicy,
-		headerXPermittedCrossDomainPolicies,
-		headerReferrerPolicy,
-		headerExpectCT,
-		headerPermissionsPolicy,
-		headerCrossOriginEmbedderPolicy,
-		headerCrossOriginResourcePolicy,
-		headerCrossOriginOpenerPolicy,
+		"X-XSS-Protection",
+		"X-Frame-Options",
+		"X-Content-Type-Options",
+		"Strict-Transport-Security",
+		"Content-Security-Policy",
+		"X-Permitted-Cross-Domain-Policies",
+		"Referrer-Policy",
+		"Expect-CT",
+		"Permissions-Policy",
+		"Cross-Origin-Embedder-Policy",
+		"Cross-Origin-Resource-Policy",
+		"Cross-Origin-Opener-Policy",
 	}
 
 	for _, header := range expectedHeaders {
@@ -29,9 +29,9 @@ func TestSecurityHeaders(t *testing.T) {
 
 	// Verify severity values are valid
 	validSeverities := map[string]bool{
-		severityDeprecated: true,
-		severityWarning:    true,
-		severityError:      true,
+		"deprecated": true,
+		"warning":    true,
+		"error":      true,
 	}
 
 	for header, severity := range SecurityHeaders {
@@ -43,13 +43,13 @@ func TestSecurityHeaders(t *testing.T) {
 
 func TestDeprecatedHeaders(t *testing.T) {
 	deprecatedHeaders := []string{
-		headerXXSSProtection,
-		headerXPermittedCrossDomainPolicies,
-		headerExpectCT,
+		"X-XSS-Protection",
+		"X-Permitted-Cross-Domain-Policies",
+		"Expect-CT",
 	}
 
 	for _, header := range deprecatedHeaders {
-		if severity, ok := SecurityHeaders[header]; !ok || severity != severityDeprecated {
+		if severity, ok := SecurityHeaders[header]; !ok || severity != "deprecated" {
 			t.Errorf("%s should be marked as deprecated", header)
 		}
 	}
@@ -58,7 +58,7 @@ func TestDeprecatedHeaders(t *testing.T) {
 func TestInformationHeaders(t *testing.T) {
 	expectedInfoHeaders := []string{
 		"X-Powered-By",
-		headerServer,
+		"Server",
 		"X-AspNet-Version",
 		"X-AspNetMvc-Version",
 	}
@@ -87,11 +87,11 @@ func TestInformationHeaders(t *testing.T) {
 
 func TestCacheHeaders(t *testing.T) {
 	expectedCacheHeaders := []string{
-		headerCacheControl,
-		headerPragma,
+		"Cache-Control",
+		"Pragma",
 		"Last-Modified",
 		"Expires",
-		headerETag,
+		"ETag",
 	}
 
 	if len(CacheHeaders) != len(expectedCacheHeaders) {
@@ -256,7 +256,7 @@ func TestCORSInfoStruct(t *testing.T) {
 		AllowOrigin:      "*",
 		AllowCredentials: true,
 		AllowMethods:     "GET, POST",
-		AllowHeaders:     headerContentType,
+		AllowHeaders:     "Content-Type",
 		Issues:           []string{"wildcard origin"},
 	}
 
@@ -269,8 +269,8 @@ func TestCORSInfoStruct(t *testing.T) {
 	if info.AllowMethods != "GET, POST" {
 		t.Errorf("AllowMethods = %s, want GET, POST", info.AllowMethods)
 	}
-	if info.AllowHeaders != headerContentType {
-		t.Errorf("AllowHeaders = %s, want %s", info.AllowHeaders, headerContentType)
+	if info.AllowHeaders != "Content-Type" {
+		t.Errorf("AllowHeaders = %s, want Content-Type", info.AllowHeaders)
 	}
 	if len(info.Issues) != 1 || info.Issues[0] != "wildcard origin" {
 		t.Errorf("Issues = %v, want [wildcard origin]", info.Issues)

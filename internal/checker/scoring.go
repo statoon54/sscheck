@@ -164,7 +164,7 @@ func applyObservatoryScoring(result *Result, isHTTPS bool, htmlContent string) {
 	result.ScoreRules = []ScoreRule{} // Initialize
 
 	// CSP scoring - check if present and for issues
-	cspHeader := getHeaderByName(result.PresentHeaders, headerContentSecurityPolicy)
+	cspHeader := getHeaderByName(result.PresentHeaders, "Content-Security-Policy")
 	if cspHeader == nil {
 		rule := createScoreRule("csp-missing", true)
 		result.ScoreRules = append(result.ScoreRules, rule)
@@ -270,7 +270,7 @@ func applyObservatoryScoring(result *Result, isHTTPS bool, htmlContent string) {
 	}
 
 	// Referrer-Policy scoring
-	refHeader := getHeaderByName(result.PresentHeaders, headerReferrerPolicy)
+	refHeader := getHeaderByName(result.PresentHeaders, "Referrer-Policy")
 	if refHeader != nil {
 		// Parse value - multiple policies can be comma-separated, browser uses last valid one
 		policies := strings.Split(refHeader.Value, ",")
@@ -378,7 +378,7 @@ func applyObservatoryScoring(result *Result, isHTTPS bool, htmlContent string) {
 	// Note: HEAD requests cannot assess SRI (HTML parsing required)
 
 	// Cross-Origin-Resource-Policy scoring
-	corpHeader := getHeaderByName(result.PresentHeaders, headerCrossOriginResourcePolicy)
+	corpHeader := getHeaderByName(result.PresentHeaders, "Cross-Origin-Resource-Policy")
 	if corpHeader != nil {
 		value := strings.ToLower(corpHeader.Value)
 		if value == "same-origin" || value == "same-site" {
@@ -416,31 +416,31 @@ func applyObservatoryScoring(result *Result, isHTTPS bool, htmlContent string) {
 func scoreToGrade(score int) string {
 	switch {
 	case score >= 100:
-		return gradeAPlus
+		return "A+"
 	case score >= 90:
-		return gradeA
+		return "A"
 	case score >= 85:
-		return gradeAMinus
+		return "A-"
 	case score >= 80:
-		return gradeBPlus
+		return "B+"
 	case score >= 70:
-		return gradeB
+		return "B"
 	case score >= 65:
-		return gradeBMinus
+		return "B-"
 	case score >= 60:
-		return gradeCPlus
+		return "C+"
 	case score >= 50:
-		return gradeC
+		return "C"
 	case score >= 45:
-		return gradeCMinus
+		return "C-"
 	case score >= 40:
-		return gradeDPlus
+		return "D+"
 	case score >= 30:
-		return gradeD
+		return "D"
 	case score >= 25:
-		return gradeDMinus
+		return "D-"
 	default:
-		return gradeF
+		return "F"
 	}
 }
 

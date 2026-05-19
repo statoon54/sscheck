@@ -7,6 +7,8 @@ import (
 	"testing"
 )
 
+const gradeAPlus = "A+"
+
 // TestScoreToGrade tests the score to grade conversion
 func TestScoreToGrade(t *testing.T) {
 	tests := []struct {
@@ -16,23 +18,23 @@ func TestScoreToGrade(t *testing.T) {
 	}{
 		{"A+ grade max", 145, gradeAPlus},
 		{"A+ grade min", 100, gradeAPlus},
-		{"A grade", 95, gradeA},
-		{"A grade min", 90, gradeA},
-		{"A- grade", 85, gradeAMinus},
-		{"B+ grade", 80, gradeBPlus},
-		{"B grade", 75, gradeB},
-		{"B grade min", 70, gradeB},
-		{"B- grade", 65, gradeBMinus},
-		{"C+ grade", 60, gradeCPlus},
-		{"C grade", 55, gradeC},
-		{"C grade min", 50, gradeC},
-		{"C- grade", 45, gradeCMinus},
-		{"D+ grade", 40, gradeDPlus},
-		{"D grade", 35, gradeD},
-		{"D grade min", 30, gradeD},
-		{"D- grade", 25, gradeDMinus},
-		{"F grade", 24, gradeF},
-		{"F grade zero", 0, gradeF},
+		{"A grade", 95, "A"},
+		{"A grade min", 90, "A"},
+		{"A- grade", 85, "A-"},
+		{"B+ grade", 80, "B+"},
+		{"B grade", 75, "B"},
+		{"B grade min", 70, "B"},
+		{"B- grade", 65, "B-"},
+		{"C+ grade", 60, "C+"},
+		{"C grade", 55, "C"},
+		{"C grade min", 50, "C"},
+		{"C- grade", 45, "C-"},
+		{"D+ grade", 40, "D+"},
+		{"D grade", 35, "D"},
+		{"D grade min", 30, "D"},
+		{"D- grade", 25, "D-"},
+		{"F grade", 24, "F"},
+		{"F grade zero", 0, "F"},
 	}
 
 	for _, tt := range tests {
@@ -104,15 +106,15 @@ func TestApplyObservatoryScoring(t *testing.T) {
 			result: &Result{
 				Score: 100,
 				PresentHeaders: []HeaderInfo{
-					{Name: headerContentSecurityPolicy, Value: "default-src 'self'"},
+					{Name: "Content-Security-Policy", Value: "default-src 'self'"},
 					{
 						Name:  "Strict-Transport-Security",
 						Value: "max-age=31536000; includeSubDomains; preload",
 					},
 					{Name: "X-Content-Type-Options", Value: "nosniff"},
-					{Name: headerXFrameOptions, Value: valueDeny},
-					{Name: headerReferrerPolicy, Value: "strict-origin-when-cross-origin"},
-					{Name: headerCrossOriginResourcePolicy, Value: "same-origin"},
+					{Name: "X-Frame-Options", Value: "DENY"},
+					{Name: "Referrer-Policy", Value: "strict-origin-when-cross-origin"},
+					{Name: "Cross-Origin-Resource-Policy", Value: "same-origin"},
 				},
 				Cookies: []CookieInfo{
 					{Name: "session", Secure: true, HttpOnly: true, SameSite: "Strict"},
@@ -151,7 +153,7 @@ func TestApplyObservatoryScoring(t *testing.T) {
 				Score: 100,
 				PresentHeaders: []HeaderInfo{
 					{
-						Name:   headerContentSecurityPolicy,
+						Name:   "Content-Security-Policy",
 						Value:  "script-src 'unsafe-inline'",
 						Issues: []string{"script-src contains 'unsafe-inline'"},
 					},
@@ -159,7 +161,7 @@ func TestApplyObservatoryScoring(t *testing.T) {
 			},
 			isHTTPS:       true,
 			expectedScore: 35,
-			expectedGrade: gradeD,
+			expectedGrade: "D",
 			explanation:   "100 - 20 (csp unsafe-inline) - 20 (hsts missing) - 5 (xcto missing) - 20 (xfo missing) = 35",
 		},
 		{
@@ -168,7 +170,7 @@ func TestApplyObservatoryScoring(t *testing.T) {
 				Score: 100,
 				PresentHeaders: []HeaderInfo{
 					{
-						Name:   headerContentSecurityPolicy,
+						Name:   "Content-Security-Policy",
 						Value:  "script-src 'unsafe-eval'",
 						Issues: []string{"script-src contains 'unsafe-eval'"},
 					},
@@ -176,7 +178,7 @@ func TestApplyObservatoryScoring(t *testing.T) {
 			},
 			isHTTPS:       true,
 			expectedScore: 45,
-			expectedGrade: gradeCMinus,
+			expectedGrade: "C-",
 			explanation:   "100 - 10 (csp unsafe-eval) - 20 (hsts missing) - 5 (xcto missing) - 20 (xfo missing) = 45",
 		},
 		{
@@ -189,7 +191,7 @@ func TestApplyObservatoryScoring(t *testing.T) {
 			},
 			isHTTPS:       true,
 			expectedScore: 0,
-			expectedGrade: gradeF,
+			expectedGrade: "F",
 			explanation:   "100 - 40 (session no secure) - 25 (csp missing) - 20 (hsts missing) - 5 (xcto missing) - 20 (xfo missing) = -10 → 0 (capped)",
 		},
 		{
@@ -206,7 +208,7 @@ func TestApplyObservatoryScoring(t *testing.T) {
 			},
 			isHTTPS:       true,
 			expectedScore: 0,
-			expectedGrade: gradeF,
+			expectedGrade: "F",
 			explanation:   "100 - 50 (cors critical) - 25 (csp missing) - 20 (hsts missing) - 5 (xcto missing) - 20 (xfo missing) = -20 → 0 (capped)",
 		},
 		{
@@ -215,14 +217,14 @@ func TestApplyObservatoryScoring(t *testing.T) {
 				Score: 100,
 				PresentHeaders: []HeaderInfo{
 					{
-						Name:  headerContentSecurityPolicy,
+						Name:  "Content-Security-Policy",
 						Value: "default-src 'self'; frame-ancestors 'none'",
 					},
 				},
 			},
 			isHTTPS:       true,
 			expectedScore: 75,
-			expectedGrade: gradeB,
+			expectedGrade: "B",
 			explanation:   "100 - 20 (hsts missing) - 5 (xcto missing) = 75. XFO bonus not applied (score < 90)",
 		},
 		{
@@ -238,7 +240,7 @@ func TestApplyObservatoryScoring(t *testing.T) {
 			},
 			isHTTPS:       true,
 			expectedScore: 50,
-			expectedGrade: gradeC,
+			expectedGrade: "C",
 			explanation:   "100 - 25 (csp missing) - 5 (xcto missing) - 20 (xfo missing) = 50. HSTS preload bonus not applied (score < 90)",
 		},
 		{
@@ -250,7 +252,7 @@ func TestApplyObservatoryScoring(t *testing.T) {
 			},
 			isHTTPS:       true,
 			expectedScore: 25,
-			expectedGrade: gradeDMinus,
+			expectedGrade: "D-",
 			explanation:   "100 - 25 (csp missing) - 20 (hsts missing) - 5 (xcto missing) - 20 (xfo missing) - 5 (sri missing) = 25",
 		},
 		{
@@ -262,7 +264,7 @@ func TestApplyObservatoryScoring(t *testing.T) {
 			},
 			isHTTPS:       true,
 			expectedScore: 30,
-			expectedGrade: gradeD,
+			expectedGrade: "D",
 			explanation:   "100 - 25 (csp missing) - 20 (hsts missing) - 5 (xcto missing) - 20 (xfo missing) = 30. SRI bonus not applied (score < 90)",
 		},
 	}
@@ -304,7 +306,7 @@ func TestApplyObservatoryScoring(t *testing.T) {
 // TestGetHeaderByName tests the header lookup function
 func TestGetHeaderByName(t *testing.T) {
 	headers := []HeaderInfo{
-		{Name: headerContentSecurityPolicy, Value: "default-src 'self'"},
+		{Name: "Content-Security-Policy", Value: "default-src 'self'"},
 		{Name: "Strict-Transport-Security", Value: "max-age=31536000"},
 		{Name: "X-Content-Type-Options", Value: "nosniff"},
 	}
@@ -318,7 +320,7 @@ func TestGetHeaderByName(t *testing.T) {
 		{
 			name:       "Find existing header",
 			headers:    headers,
-			searchName: headerContentSecurityPolicy,
+			searchName: "Content-Security-Policy",
 			want:       &headers[0],
 		},
 		{
@@ -358,12 +360,12 @@ func TestGetHeaderByName(t *testing.T) {
 func TestScoringIntegration(t *testing.T) {
 	// Create a test server with good security headers
 	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set(headerContentSecurityPolicy, "default-src 'self'; script-src 'self'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'")
 		w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set(headerXFrameOptions, valueDeny)
-		w.Header().Set(headerReferrerPolicy, "strict-origin-when-cross-origin")
-		w.Header().Set(headerCrossOriginResourcePolicy, "same-origin")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer ts.Close()
@@ -371,7 +373,7 @@ func TestScoringIntegration(t *testing.T) {
 	checker := New(&Options{
 		Timeout:    10,
 		DisableSSL: true,
-		Method:     methodGet,
+		Method:     "GET",
 	})
 
 	result := checker.Check(ts.URL)
@@ -403,7 +405,7 @@ func TestScoringIntegrationPoorSecurity(t *testing.T) {
 
 	checker := New(&Options{
 		Timeout: 10,
-		Method:  methodGet,
+		Method:  "GET",
 	})
 
 	result := checker.Check(ts.URL)
@@ -419,8 +421,8 @@ func TestScoringIntegrationPoorSecurity(t *testing.T) {
 	}
 
 	// Should have a low grade
-	if result.Grade == gradeAPlus || result.Grade == gradeA ||
-		result.Grade == gradeBPlus {
+	if result.Grade == gradeAPlus || result.Grade == "A" ||
+		result.Grade == "B+" {
 		t.Errorf("Expected low grade for poor security, got %s", result.Grade)
 	}
 }
