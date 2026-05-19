@@ -17,7 +17,7 @@ func TestNew(t *testing.T) {
 			opts: &Options{
 				Timeout: 10,
 				Workers: 5,
-				Method:  "HEAD",
+				Method:  methodHead,
 			},
 		},
 		{
@@ -25,7 +25,7 @@ func TestNew(t *testing.T) {
 			opts: &Options{
 				Timeout:    10,
 				DisableSSL: true,
-				Method:     "GET",
+				Method:     methodGet,
 			},
 		},
 		{
@@ -33,7 +33,7 @@ func TestNew(t *testing.T) {
 			opts: &Options{
 				Timeout:  10,
 				ProxyURL: "http://localhost:8080",
-				Method:   "HEAD",
+				Method:   methodHead,
 			},
 		},
 		{
@@ -41,7 +41,7 @@ func TestNew(t *testing.T) {
 			opts: &Options{
 				Timeout:         10,
 				FollowRedirects: false,
-				Method:          "HEAD",
+				Method:          methodHead,
 			},
 		},
 	}
@@ -77,20 +77,20 @@ func TestCheck(t *testing.T) {
 		{
 			name: "all security headers present",
 			headers: map[string]string{
-				"Strict-Transport-Security":    "max-age=31536000; includeSubDomains",
-				"Content-Security-Policy":      "default-src 'self'",
-				"X-Content-Type-Options":       "nosniff",
-				"X-Frame-Options":              "DENY",
-				"Referrer-Policy":              "strict-origin-when-cross-origin",
-				"Permissions-Policy":           "geolocation=()",
-				"Cross-Origin-Opener-Policy":   "same-origin",
-				"Cross-Origin-Embedder-Policy": "require-corp",
-				"Cross-Origin-Resource-Policy": "same-origin",
+				headerStrictTransportSecurity:   "max-age=31536000; includeSubDomains",
+				headerContentSecurityPolicy:     "default-src 'self'",
+				headerXContentTypeOptions:       "nosniff",
+				headerXFrameOptions:             valueDeny,
+				headerReferrerPolicy:            "strict-origin-when-cross-origin",
+				headerPermissionsPolicy:         "geolocation=()",
+				headerCrossOriginOpenerPolicy:   "same-origin",
+				headerCrossOriginEmbedderPolicy: "require-corp",
+				headerCrossOriginResourcePolicy: "same-origin",
 			},
 			statusCode:      200,
 			expectedSafe:    9,
 			expectedUnsafe:  0,
-			opts:            &Options{Timeout: 10, Method: "GET"},
+			opts:            &Options{Timeout: 10, Method: methodGet},
 			wantPresentCSP:  true,
 			wantPresentHSTS: true,
 		},
@@ -100,29 +100,29 @@ func TestCheck(t *testing.T) {
 			statusCode:     200,
 			expectedSafe:   0,
 			expectedUnsafe: 9, // All non-deprecated headers missing
-			opts:           &Options{Timeout: 10, Method: "GET"},
+			opts:           &Options{Timeout: 10, Method: methodGet},
 		},
 		{
 			name: "partial headers",
 			headers: map[string]string{
-				"Strict-Transport-Security": "max-age=31536000",
-				"X-Content-Type-Options":    "nosniff",
+				headerStrictTransportSecurity: "max-age=31536000",
+				headerXContentTypeOptions:     "nosniff",
 			},
 			statusCode:      200,
 			expectedSafe:    2,
 			expectedUnsafe:  7,
-			opts:            &Options{Timeout: 10, Method: "GET"},
+			opts:            &Options{Timeout: 10, Method: methodGet},
 			wantPresentHSTS: true,
 		},
 		{
 			name: "CSP with frame-ancestors removes X-Frame-Options requirement",
 			headers: map[string]string{
-				"Content-Security-Policy": "frame-ancestors 'self'",
+				headerContentSecurityPolicy: "frame-ancestors 'self'",
 			},
 			statusCode:     200,
 			expectedSafe:   1,
 			expectedUnsafe: 7, // X-Frame-Options not counted as missing
-			opts:           &Options{Timeout: 10, Method: "GET"},
+			opts:           &Options{Timeout: 10, Method: methodGet},
 			wantPresentCSP: true,
 		},
 		{
@@ -131,50 +131,50 @@ func TestCheck(t *testing.T) {
 				"X-XSS-Protection": "0",
 			},
 			statusCode:     200,
-			opts:           &Options{Timeout: 10, Method: "GET", ShowDeprecated: true},
+			opts:           &Options{Timeout: 10, Method: methodGet, ShowDeprecated: true},
 			expectedSafe:   1,
 			expectedUnsafe: 11, // Including deprecated
 		},
 		{
 			name: "HSTS with max-age=0 should be error",
 			headers: map[string]string{
-				"Strict-Transport-Security": "max-age=0",
+				headerStrictTransportSecurity: "max-age=0",
 			},
 			statusCode:     200,
-			opts:           &Options{Timeout: 10, Method: "GET"},
+			opts:           &Options{Timeout: 10, Method: methodGet},
 			expectedSafe:   1,
 			expectedUnsafe: 8,
 		},
 		{
 			name: "show deprecated headers",
 			headers: map[string]string{
-				"X-XSS-Protection":                  "1; mode=block",
-				"Expect-CT":                         "max-age=86400",
-				"X-Permitted-Cross-Domain-Policies": "none",
+				headerXXSSProtection:                "1; mode=block",
+				headerExpectCT:                      "max-age=86400",
+				headerXPermittedCrossDomainPolicies: "none",
 			},
 			statusCode:     200,
-			opts:           &Options{Timeout: 10, Method: "GET", ShowDeprecated: true},
+			opts:           &Options{Timeout: 10, Method: methodGet, ShowDeprecated: true},
 			expectedSafe:   3,
 			expectedUnsafe: 9, // 12 total - 3 present
 		},
 		{
 			name: "information disclosure headers",
 			headers: map[string]string{
-				"Server":       "Apache/2.4.41",
+				headerServer:   "Apache/2.4.41",
 				"X-Powered-By": "PHP/7.4",
 			},
 			statusCode: 200,
-			opts:       &Options{Timeout: 10, Method: "GET", ShowInfo: true},
+			opts:       &Options{Timeout: 10, Method: methodGet, ShowInfo: true},
 		},
 		{
 			name: "cache headers",
 			headers: map[string]string{
-				"Cache-Control": "no-cache, no-store",
-				"Pragma":        "no-cache",
-				"ETag":          "abc123",
+				headerCacheControl: "no-cache, no-store",
+				headerPragma:       "no-cache",
+				headerETag:         "abc123",
 			},
 			statusCode: 200,
-			opts:       &Options{Timeout: 10, Method: "GET", ShowCache: true},
+			opts:       &Options{Timeout: 10, Method: methodGet, ShowCache: true},
 		},
 	}
 
@@ -224,7 +224,7 @@ func TestCheck(t *testing.T) {
 			if tt.wantPresentCSP {
 				found := false
 				for _, h := range result.PresentHeaders {
-					if h.Name == "Content-Security-Policy" {
+					if h.Name == headerContentSecurityPolicy {
 						found = true
 						break
 					}
@@ -249,10 +249,10 @@ func TestCheck(t *testing.T) {
 
 			// Check info headers if requested
 			if tt.opts.ShowInfo && len(tt.headers) > 0 {
-				if _, ok := tt.headers["Server"]; ok {
+				if _, ok := tt.headers[headerServer]; ok {
 					found := false
 					for _, h := range result.InfoHeaders {
-						if h.Name == "Server" {
+						if h.Name == headerServer {
 							found = true
 							break
 						}
@@ -265,10 +265,10 @@ func TestCheck(t *testing.T) {
 
 			// Check cache headers if requested
 			if tt.opts.ShowCache && len(tt.headers) > 0 {
-				if _, ok := tt.headers["Cache-Control"]; ok {
+				if _, ok := tt.headers[headerCacheControl]; ok {
 					found := false
 					for _, h := range result.CacheHeaders {
-						if h.Name == "Cache-Control" {
+						if h.Name == headerCacheControl {
 							found = true
 							break
 						}
@@ -292,7 +292,7 @@ func TestCheckAll(t *testing.T) {
 	defer server1.Close()
 
 	server2 := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Security-Policy", "default-src 'self'")
+		w.Header().Set(headerContentSecurityPolicy, "default-src 'self'")
 		w.WriteHeader(200)
 	}))
 	defer server2.Close()
@@ -300,7 +300,7 @@ func TestCheckAll(t *testing.T) {
 	opts := &Options{
 		Timeout:    10,
 		Workers:    2,
-		Method:     "GET",
+		Method:     methodGet,
 		DisableSSL: true,
 	}
 
@@ -328,12 +328,12 @@ func TestCheckFallbackToGET(t *testing.T) {
 	getCalled := false
 
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "HEAD" {
+		if r.Method == methodHead {
 			headCalled = true
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		if r.Method == "GET" {
+		if r.Method == methodGet {
 			getCalled = true
 			w.Header().Set("Strict-Transport-Security", "max-age=31536000")
 			w.WriteHeader(http.StatusOK)
@@ -344,7 +344,7 @@ func TestCheckFallbackToGET(t *testing.T) {
 
 	opts := &Options{
 		Timeout:    10,
-		Method:     "HEAD",
+		Method:     methodHead,
 		DisableSSL: true,
 	}
 
@@ -366,7 +366,7 @@ func TestCheckFallbackToGET(t *testing.T) {
 func TestCheckWithError(t *testing.T) {
 	opts := &Options{
 		Timeout: 1,
-		Method:  "GET",
+		Method:  methodGet,
 	}
 
 	c := New(opts)
@@ -432,16 +432,16 @@ func TestAppendPort(t *testing.T) {
 // TestGetHeaderValue tests case-insensitive header retrieval
 func TestGetHeaderValue(t *testing.T) {
 	headers := http.Header{
-		"Content-Type":              []string{"application/json"},
-		"X-Custom-Header":           []string{"value1", "value2"},
-		"Strict-Transport-Security": []string{"max-age=31536000"},
+		headerContentType:             {"application/json"},
+		"X-Custom-Header":             {"value1", "value2"},
+		headerStrictTransportSecurity: {"max-age=31536000"},
 	}
 
 	tests := []struct {
 		name     string
 		expected string
 	}{
-		{"Content-Type", "application/json"},
+		{headerContentType, "application/json"},
 		{"content-type", "application/json"},
 		{"CONTENT-TYPE", "application/json"},
 		{"X-Custom-Header", "value1, value2"},
@@ -472,7 +472,7 @@ func TestCheckWithCustomHeaders(t *testing.T) {
 
 	opts := &Options{
 		Timeout:    10,
-		Method:     "GET",
+		Method:     methodGet,
 		DisableSSL: true,
 		CustomHeaders: map[string]string{
 			"X-Custom":      "test-value",
@@ -506,7 +506,7 @@ func TestCheckWithCookie(t *testing.T) {
 
 	opts := &Options{
 		Timeout:    10,
-		Method:     "GET",
+		Method:     methodGet,
 		DisableSSL: true,
 		Cookie:     "session=abc123; token=xyz",
 	}
@@ -634,7 +634,7 @@ func TestParseCSPDirectives(t *testing.T) {
 			name: "simple CSP",
 			csp:  "default-src 'self'; script-src 'self' https://example.com",
 			expected: map[string]string{
-				"default-src": "'self'",
+				"default-src": cspSourceSelf,
 				"script-src":  "'self' https://example.com",
 			},
 		},
@@ -642,7 +642,7 @@ func TestParseCSPDirectives(t *testing.T) {
 			name: "CSP with upgrade-insecure-requests",
 			csp:  "default-src 'self'; upgrade-insecure-requests",
 			expected: map[string]string{
-				"default-src":               "'self'",
+				"default-src":               cspSourceSelf,
 				"upgrade-insecure-requests": "",
 			},
 		},
@@ -650,7 +650,7 @@ func TestParseCSPDirectives(t *testing.T) {
 			name: "CSP with extra whitespace",
 			csp:  "  default-src   'self'  ;   script-src 'none'  ",
 			expected: map[string]string{
-				"default-src": "'self'",
+				"default-src": cspSourceSelf,
 				"script-src":  "'none'",
 			},
 		},
@@ -675,14 +675,14 @@ func TestParseCSPDirectives(t *testing.T) {
 // TestCSPAnalysisInCheck tests that CSP analysis is integrated into Check
 func TestCSPAnalysisInCheck(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Security-Policy", "script-src 'self' 'unsafe-inline'")
+		w.Header().Set(headerContentSecurityPolicy, "script-src 'self' 'unsafe-inline'")
 		w.WriteHeader(200)
 	}))
 	defer server.Close()
 
 	opts := &Options{
 		Timeout:    10,
-		Method:     "GET",
+		Method:     methodGet,
 		DisableSSL: true,
 	}
 
@@ -692,7 +692,7 @@ func TestCSPAnalysisInCheck(t *testing.T) {
 	// Find CSP header in results
 	var cspHeader *HeaderInfo
 	for i := range result.PresentHeaders {
-		if result.PresentHeaders[i].Name == "Content-Security-Policy" {
+		if result.PresentHeaders[i].Name == headerContentSecurityPolicy {
 			cspHeader = &result.PresentHeaders[i]
 			break
 		}
@@ -848,7 +848,7 @@ func TestAnalyzeXFrameOptions(t *testing.T) {
 		value      string
 		wantIssues bool
 	}{
-		{"DENY is valid", "DENY", false},
+		{"DENY is valid", valueDeny, false},
 		{"deny lowercase is valid", "deny", false},
 		{"SAMEORIGIN is valid", "SAMEORIGIN", false},
 		{"ALLOW-FROM warns deprecated", "ALLOW-FROM https://example.com", true},
@@ -890,6 +890,7 @@ func TestAnalyzeCookies(t *testing.T) {
 		{
 			name: "session cookie missing HttpOnly",
 			cookies: []*http.Cookie{
+				// #nosec G124 -- Intentionally insecure cookie fixture for analyzer test coverage.
 				{Name: "session", Secure: true, HttpOnly: false, SameSite: http.SameSiteLaxMode},
 			},
 			isHTTPS:    true,
@@ -899,6 +900,7 @@ func TestAnalyzeCookies(t *testing.T) {
 		{
 			name: "cookie missing Secure on HTTPS",
 			cookies: []*http.Cookie{
+				// #nosec G124 -- Intentionally insecure cookie fixture for analyzer test coverage.
 				{Name: "mycookie", Secure: false},
 			},
 			isHTTPS:    true,
@@ -908,6 +910,7 @@ func TestAnalyzeCookies(t *testing.T) {
 		{
 			name: "cookie missing Secure but protected by HSTS",
 			cookies: []*http.Cookie{
+				// #nosec G124 -- Intentionally insecure cookie fixture for analyzer test coverage.
 				{Name: "mycookie", Secure: false},
 			},
 			isHTTPS:    true,
@@ -962,7 +965,7 @@ func TestAnalyzeCORS(t *testing.T) {
 		{
 			name: "specific origin is safe",
 			headers: http.Header{
-				"Access-Control-Allow-Origin": []string{"https://example.com"},
+				headerAccessControlAllowOrigin: []string{"https://example.com"},
 			},
 			wantCORS:   true,
 			wantIssues: false,
@@ -970,7 +973,7 @@ func TestAnalyzeCORS(t *testing.T) {
 		{
 			name: "wildcard origin warns",
 			headers: http.Header{
-				"Access-Control-Allow-Origin": []string{"*"},
+				headerAccessControlAllowOrigin: []string{"*"},
 			},
 			wantCORS:   true,
 			wantIssues: true,
@@ -979,7 +982,7 @@ func TestAnalyzeCORS(t *testing.T) {
 		{
 			name: "wildcard with credentials is critical",
 			headers: http.Header{
-				"Access-Control-Allow-Origin":      []string{"*"},
+				headerAccessControlAllowOrigin:     []string{"*"},
 				"Access-Control-Allow-Credentials": []string{"true"},
 			},
 			wantCORS:   true,
@@ -989,7 +992,7 @@ func TestAnalyzeCORS(t *testing.T) {
 		{
 			name: "null origin is dangerous",
 			headers: http.Header{
-				"Access-Control-Allow-Origin": []string{"null"},
+				headerAccessControlAllowOrigin: []string{"null"},
 			},
 			wantCORS:   true,
 			wantIssues: true,

@@ -2,35 +2,35 @@ package checker
 
 // SecurityHeaders defines the security headers to check with their severity level
 var SecurityHeaders = map[string]string{
-	"X-XSS-Protection":                  "deprecated",
-	"X-Frame-Options":                   "warning",
-	"X-Content-Type-Options":            "warning",
-	"Strict-Transport-Security":         "error",
-	"Content-Security-Policy":           "warning",
-	"X-Permitted-Cross-Domain-Policies": "deprecated",
-	"Referrer-Policy":                   "warning",
-	"Expect-CT":                         "deprecated",
-	"Permissions-Policy":                "warning",
-	"Cross-Origin-Embedder-Policy":      "warning",
-	"Cross-Origin-Resource-Policy":      "warning",
-	"Cross-Origin-Opener-Policy":        "warning",
+	headerXXSSProtection:                severityDeprecated,
+	headerXFrameOptions:                 severityWarning,
+	headerXContentTypeOptions:           severityWarning,
+	headerStrictTransportSecurity:       severityError,
+	headerContentSecurityPolicy:         severityWarning,
+	headerXPermittedCrossDomainPolicies: severityDeprecated,
+	headerReferrerPolicy:                severityWarning,
+	headerExpectCT:                      severityDeprecated,
+	headerPermissionsPolicy:             severityWarning,
+	headerCrossOriginEmbedderPolicy:     severityWarning,
+	headerCrossOriginResourcePolicy:     severityWarning,
+	headerCrossOriginOpenerPolicy:       severityWarning,
 }
 
 // InformationHeaders are headers that might disclose sensitive information
 var InformationHeaders = []string{
 	"X-Powered-By",
-	"Server",
+	headerServer,
 	"X-AspNet-Version",
 	"X-AspNetMvc-Version",
 }
 
 // CacheHeaders are headers related to caching
 var CacheHeaders = []string{
-	"Cache-Control",
-	"Pragma",
+	headerCacheControl,
+	headerPragma,
 	"Last-Modified",
 	"Expires",
-	"ETag",
+	headerETag,
 }
 
 // HeaderInfo contains information about a header
