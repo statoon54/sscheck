@@ -28,13 +28,24 @@ jobs:
         if: ${{ env.CODECOV_TOKEN != '' }}
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+          CODECOV_GPG_FINGERPRINT: 27034E7FDB850E0BBC2C62FF806BB28AED779869
         run: |
+          set -eu
           apk add --no-cache gnupg
-          curl https://keybase.io/codecovsecurity/pgp_keys.asc | gpg --no-default-keyring --keyring trustedkeys.gpg --import
-          curl -Os https://cli.codecov.io/latest/alpine/codecov
-          curl -Os https://cli.codecov.io/latest/alpine/codecov.SHA256SUM
-          curl -Os https://cli.codecov.io/latest/alpine/codecov.SHA256SUM.sig
-          gpg --verify codecov.SHA256SUM.sig codecov.SHA256SUM
+          # Codecov's keybase account no longer serves this key (it now returns
+          # HTTP 404), so fetch it from a keyserver over HTTPS instead, pinned
+          # to the full fingerprint rather than a short key id.
+          curl -fsSL -o codecov.asc \
+            "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x${CODECOV_GPG_FINGERPRINT}"
+          gpg --batch --no-default-keyring --keyring ./trustedkeys.gpg --import codecov.asc
+          # -f makes curl fail on HTTP errors; without it a 404 body was written
+          # to disk and the failure only surfaced later, as a confusing gpg error.
+          curl -fsSL -O https://cli.codecov.io/latest/alpine/codecov
+          curl -fsSL -O https://cli.codecov.io/latest/alpine/codecov.SHA256SUM
+          curl -fsSL -O https://cli.codecov.io/latest/alpine/codecov.SHA256SUM.sig
+          # gpgv against the explicit keyring: plain `gpg --verify` consulted the
+          # default keyring, not the trustedkeys.gpg the key was imported into.
+          gpgv --keyring ./trustedkeys.gpg codecov.SHA256SUM.sig codecov.SHA256SUM
           sha256sum -c codecov.SHA256SUM
           chmod +x codecov
           ./codecov upload-process -t "$CODECOV_TOKEN" -f coverage.out --git-service github
