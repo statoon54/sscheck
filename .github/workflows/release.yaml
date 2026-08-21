@@ -12,7 +12,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     container:
-      image: golang:1.26-alpine
+      image: golang:1.27-alpine
     steps:
       - name: Install dependencies
         run: apk add --no-cache git curl

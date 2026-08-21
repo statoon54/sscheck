@@ -28,6 +28,7 @@ const (
 	headerXXSSProtection                = "X-XSS-Protection"
 	cspSourceSelf                       = "'self'"
 	valueDeny                           = "DENY"
+	valueSameOrigin                     = "same-origin"
 	gradeAPlus                          = "A+"
 	gradeA                              = "A"
 	gradeAMinus                         = "A-"

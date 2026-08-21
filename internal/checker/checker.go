@@ -668,7 +668,7 @@ func analyzeCORP(value string) []string {
 	var issues []string
 	valueLower := strings.ToLower(strings.TrimSpace(value))
 
-	validValues := []string{"same-origin", "same-site", "cross-origin"}
+	validValues := []string{valueSameOrigin, "same-site", "cross-origin"}
 	found := slices.Contains(validValues, valueLower)
 
 	if !found {

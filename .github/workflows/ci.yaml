@@ -10,7 +10,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     container:
-      image: golang:1.26-alpine
+      image: golang:1.27-alpine
     steps:
       - name: Install dependencies
         run: apk add --no-cache git curl
@@ -42,7 +42,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     container:
-      image: golang:1.26-alpine
+      image: golang:1.27-alpine
     steps:
       - name: Install dependencies
         run: apk add --no-cache git
@@ -54,7 +54,7 @@ jobs:
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Install golangci-lint from source
-        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.4
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.1
 
       - name: Run golangci-lint
         run: golangci-lint run ./...
@@ -62,7 +62,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: golang:1.26-alpine
+      image: golang:1.27-alpine
     needs: [test, lint]
     strategy:
       matrix:
@@ -88,7 +88,7 @@ jobs:
           COMMIT=$(git rev-parse --short HEAD)
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-          LDFLAGS="-s -w -X 'sscheck/internal/version.Version=${VERSION}' -X 'sscheck/internal/version.Commit=${COMMIT}' -X 'sscheck/internal/version.Date=${DATE}'"
+          LDFLAGS="-s -w -X 'github.com/statoon54/sscheck/internal/version.Version=${VERSION}' -X 'github.com/statoon54/sscheck/internal/version.Commit=${COMMIT}' -X 'github.com/statoon54/sscheck/internal/version.Date=${DATE}'"
 
           OUTPUT="sscheck-${{ matrix.goos }}-${{ matrix.goarch }}"
           if [ "${{ matrix.goos }}" = "windows" ]; then

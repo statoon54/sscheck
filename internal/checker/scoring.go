@@ -275,8 +275,8 @@ func applyObservatoryScoring(result *Result, isHTTPS bool, htmlContent string) {
 		// Parse value - multiple policies can be comma-separated, browser uses last valid one
 		policies := strings.Split(refHeader.Value, ",")
 		var lastPolicy string
-		for i := len(policies) - 1; i >= 0; i-- {
-			p := strings.TrimSpace(strings.ToLower(policies[i]))
+		for _, policy := range slices.Backward(policies) {
+			p := strings.TrimSpace(strings.ToLower(policy))
 			if p != "" {
 				lastPolicy = p
 				break
@@ -381,7 +381,7 @@ func applyObservatoryScoring(result *Result, isHTTPS bool, htmlContent string) {
 	corpHeader := getHeaderByName(result.PresentHeaders, headerCrossOriginResourcePolicy)
 	if corpHeader != nil {
 		value := strings.ToLower(corpHeader.Value)
-		if value == "same-origin" || value == "same-site" {
+		if value == valueSameOrigin || value == "same-site" {
 			// Bonus for CORP implementation (applied only if score >= 90)
 			bonuses = append(bonuses, "corp-same-origin")
 		} else if len(corpHeader.Issues) > 0 {
