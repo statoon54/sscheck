@@ -1,6 +1,7 @@
 package checker
 
 import (
+	"slices"
 	"testing"
 )
 
@@ -72,13 +73,7 @@ func TestInformationHeaders(t *testing.T) {
 	}
 
 	for _, expected := range expectedInfoHeaders {
-		found := false
-		for _, header := range InformationHeaders {
-			if header == expected {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(InformationHeaders, expected)
 		if !found {
 			t.Errorf("InformationHeaders missing %s", expected)
 		}
@@ -103,13 +98,7 @@ func TestCacheHeaders(t *testing.T) {
 	}
 
 	for _, expected := range expectedCacheHeaders {
-		found := false
-		for _, header := range CacheHeaders {
-			if header == expected {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(CacheHeaders, expected)
 		if !found {
 			t.Errorf("CacheHeaders missing %s", expected)
 		}
@@ -147,13 +136,7 @@ func TestReferrerPolicyConstants(t *testing.T) {
 		"no-referrer-when-downgrade",
 	}
 	for _, expected := range expectedUnsafe {
-		found := false
-		for _, policy := range ReferrerPolicyUnsafe {
-			if policy == expected {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(ReferrerPolicyUnsafe, expected)
 		if !found {
 			t.Errorf("ReferrerPolicyUnsafe missing %s", expected)
 		}
@@ -167,13 +150,7 @@ func TestReferrerPolicyConstants(t *testing.T) {
 		"strict-origin-when-cross-origin",
 	}
 	for _, expected := range expectedPrivate {
-		found := false
-		for _, policy := range ReferrerPolicyPrivate {
-			if policy == expected {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(ReferrerPolicyPrivate, expected)
 		if !found {
 			t.Errorf("ReferrerPolicyPrivate missing %s", expected)
 		}
@@ -191,13 +168,7 @@ func TestSessionCookieNames(t *testing.T) {
 	// Verify common session cookie names are defined
 	expectedNames := []string{"session", "phpsessid", "jsessionid", "auth", "token"}
 	for _, expected := range expectedNames {
-		found := false
-		for _, name := range SessionCookieNames {
-			if name == expected {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(SessionCookieNames, expected)
 		if !found {
 			t.Errorf("SessionCookieNames missing %s", expected)
 		}
@@ -208,13 +179,7 @@ func TestCSRFCookieNames(t *testing.T) {
 	// Verify common CSRF cookie names are defined
 	expectedNames := []string{"csrf", "csrftoken", "xsrf"}
 	for _, expected := range expectedNames {
-		found := false
-		for _, name := range CSRFCookieNames {
-			if name == expected {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(CSRFCookieNames, expected)
 		if !found {
 			t.Errorf("CSRFCookieNames missing %s", expected)
 		}

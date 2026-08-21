@@ -12,6 +12,9 @@
 bin/
 *.out
 
+# GoReleaser build output
+dist/
+
 # Go workspace file
 go.work
 

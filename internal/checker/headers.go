@@ -110,7 +110,7 @@ var ReferrerPolicyUnsafe = []string{
 // ReferrerPolicyPrivate contains secure referrer policy values
 var ReferrerPolicyPrivate = []string{
 	"no-referrer",
-	"same-origin",
+	valueSameOrigin,
 	"strict-origin",
 	"strict-origin-when-cross-origin",
 }

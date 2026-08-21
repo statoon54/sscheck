@@ -75,11 +75,21 @@ linters:
       - common-false-positives
       - legacy
     rules:
+      # Test tables intentionally repeat literals; extracting them into
+      # constants hurts readability of the fixtures.
       - path: (.+)_test\.go
         linters:
           - dupl
           - mnd
           - lll
+          - goconst
+      # Test fixtures deliberately build insecure cookies to assert that the
+      # checker flags them. Scoped to G124 only so other gosec rules still
+      # apply to test code.
+      - path: (.+)_test\.go
+        text: "G124:"
+        linters:
+          - gosec
       - path: (.+)\.go$
         text: "G115: integer overflow conversion"
       - path: (.+)\.go$
@@ -95,4 +105,4 @@ formatters:
           replacement: "any"
     goimports:
       local-prefixes:
-        - github.com/golangci/golangci-lint/v2
+        - github.com/statoon54/sscheck

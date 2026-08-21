@@ -10,7 +10,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     container:
-      image: golang:1.26-alpine
+      image: golang:1.27-alpine
     steps:
       - name: Install dependencies
         run: apk add --no-cache git curl
@@ -28,13 +28,24 @@ jobs:
         if: ${{ env.CODECOV_TOKEN != '' }}
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+          CODECOV_GPG_FINGERPRINT: 27034E7FDB850E0BBC2C62FF806BB28AED779869
         run: |
+          set -eu
           apk add --no-cache gnupg
-          curl https://keybase.io/codecovsecurity/pgp_keys.asc | gpg --no-default-keyring --keyring trustedkeys.gpg --import
-          curl -Os https://cli.codecov.io/latest/alpine/codecov
-          curl -Os https://cli.codecov.io/latest/alpine/codecov.SHA256SUM
-          curl -Os https://cli.codecov.io/latest/alpine/codecov.SHA256SUM.sig
-          gpg --verify codecov.SHA256SUM.sig codecov.SHA256SUM
+          # Codecov's keybase account no longer serves this key (it now returns
+          # HTTP 404), so fetch it from a keyserver over HTTPS instead, pinned
+          # to the full fingerprint rather than a short key id.
+          curl -fsSL -o codecov.asc \
+            "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x${CODECOV_GPG_FINGERPRINT}"
+          gpg --batch --no-default-keyring --keyring ./trustedkeys.gpg --import codecov.asc
+          # -f makes curl fail on HTTP errors; without it a 404 body was written
+          # to disk and the failure only surfaced later, as a confusing gpg error.
+          curl -fsSL -O https://cli.codecov.io/latest/alpine/codecov
+          curl -fsSL -O https://cli.codecov.io/latest/alpine/codecov.SHA256SUM
+          curl -fsSL -O https://cli.codecov.io/latest/alpine/codecov.SHA256SUM.sig
+          # gpgv against the explicit keyring: plain `gpg --verify` consulted the
+          # default keyring, not the trustedkeys.gpg the key was imported into.
+          gpgv --keyring ./trustedkeys.gpg codecov.SHA256SUM.sig codecov.SHA256SUM
           sha256sum -c codecov.SHA256SUM
           chmod +x codecov
           ./codecov upload-process -t "$CODECOV_TOKEN" -f coverage.out --git-service github
@@ -42,7 +53,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     container:
-      image: golang:1.26-alpine
+      image: golang:1.27-alpine
     steps:
       - name: Install dependencies
         run: apk add --no-cache git
@@ -54,7 +65,7 @@ jobs:
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Install golangci-lint from source
-        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.4
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.1
 
       - name: Run golangci-lint
         run: golangci-lint run ./...
@@ -62,7 +73,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: golang:1.26-alpine
+      image: golang:1.27-alpine
     needs: [test, lint]
     strategy:
       matrix:
@@ -88,7 +99,7 @@ jobs:
           COMMIT=$(git rev-parse --short HEAD)
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-          LDFLAGS="-s -w -X 'sscheck/internal/version.Version=${VERSION}' -X 'sscheck/internal/version.Commit=${COMMIT}' -X 'sscheck/internal/version.Date=${DATE}'"
+          LDFLAGS="-s -w -X 'github.com/statoon54/sscheck/internal/version.Version=${VERSION}' -X 'github.com/statoon54/sscheck/internal/version.Commit=${COMMIT}' -X 'github.com/statoon54/sscheck/internal/version.Date=${DATE}'"
 
           OUTPUT="sscheck-${{ matrix.goos }}-${{ matrix.goarch }}"
           if [ "${{ matrix.goos }}" = "windows" ]; then
